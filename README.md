@@ -109,3 +109,29 @@ npm run dev
 Project: **TestSpace**
 
 See [SECURITY.md](./SECURITY.md) for security notes.
+
+
+---
+
+## Appwrite MCP (OpenCode)
+
+This repo includes [`opencode.json`](./opencode.json) so [OpenCode](https://opencode.ai) can talk to your Appwrite Cloud project:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "appwrite": {
+      "type": "remote",
+      "enabled": true,
+      "url": "https://mcp.appwrite.io/"
+    }
+  }
+}
+```
+
+1. Open the project in OpenCode.
+2. Connect the **appwrite** MCP server (browser OAuth — no API keys to paste).
+3. Ask things like: *“Create the testspace database collections”*, *“List storage buckets”*, *“Deploy the API function”*.
+
+Docs: [Appwrite MCP + OpenCode](https://appwrite.io/docs/tooling/mcp/opencode)
