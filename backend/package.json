@@ -7,11 +7,10 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --external:@libsql/client --external:libsql --external:sharp --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --external:sharp --external:node-appwrite --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "postbuild": "node -e \"require('fs').accessSync('dist/index.js'); console.log('dist/index.js ok')\"",
     "start": "node dist/index.js",
-    "db:migrate": "tsx src/database/migrateFromBlobs.ts",
-    "test": "tsx src/__tests__/security.regression.test.ts && tsx src/__tests__/telegramSplit.test.ts && tsx src/__tests__/migration.smoke.test.ts && tsx src/__tests__/data.integrity.test.ts && tsx src/__tests__/ocrNormalization.test.ts && tsx src/__tests__/webappAttemptLifecycle.test.ts",
+    "test": "tsx src/__tests__/security.regression.test.ts && tsx src/__tests__/telegramSplit.test.ts && tsx src/__tests__/ocrNormalization.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

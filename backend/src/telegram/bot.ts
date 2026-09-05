@@ -332,7 +332,7 @@ function needsNameSetup(student: Student): boolean {
   return false;
 }
 
-/** Bounded in-memory dedup — avoids a Turso round-trip on every button press. */
+/** Bounded in-memory dedup — avoids a DB round-trip on every button press. */
 const recentUpdateIds = new Set<number>();
 const RECENT_UPDATE_MAX = 4000;
 
@@ -1730,7 +1730,7 @@ async function autoSubmitExam(exam: Exam, attempt: Attempt): Promise<SimulatorRe
 }
 
 function reviewWebAppUrl(attemptId: string): string {
-  const base = 'https://testspace-webapp-tg.vercel.app';
+  const base = 'https://testspace.appwrite.network';
   return `${base}/review?a=${encodeURIComponent(attemptId)}`;
 }
 

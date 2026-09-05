@@ -117,7 +117,7 @@ export const LABELS = {
   myResults: '📊 My Results',
 } as const;
 
-const STABLE_WEBAPP_URL = 'https://testspace-webapp-tg.vercel.app';
+const STABLE_WEBAPP_URL = 'https://testspace.appwrite.network';
 
 export function webAppBaseUrl(): string {
   return STABLE_WEBAPP_URL;

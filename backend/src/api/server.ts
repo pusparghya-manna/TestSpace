@@ -36,7 +36,7 @@ async function startServer(app?: import('express').Express) {
   const owned = !app;
   app = app || express();
 
-  // Railway / reverse-proxy: correct client IP for rate limits
+  // Reverse-proxy: correct client IP for rate limits
   app.set('trust proxy', 1);
   app.use(securityHeaders);
   app.use(cors({ origin: corsOriginDelegate, credentials: true }));

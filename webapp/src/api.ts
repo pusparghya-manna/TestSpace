@@ -1,10 +1,10 @@
-/** Telegram Mini App → Railway testspace backend */
+/** Telegram Mini App → TestSpace Appwrite backend */
 
-/** Empty = same origin (Railway /app). Set VITE_API_URL on standalone Vercel. */
-const DEFAULT_API = 'https://testspace-production.up.railway.app';
+/** Empty = same origin. Set VITE_API_URL to Appwrite Function URL when hosted separately. */
+const DEFAULT_API = '';
 const raw = import.meta.env.VITE_API_URL;
 const useSameOriginProxy =
-  typeof window !== 'undefined' && /(?:vercel\.app|railway\.app)$/i.test(window.location.hostname);
+  typeof window !== 'undefined' && /(?:appwrite\.network|appwrite\.io)$/i.test(window.location.hostname);
 const configuredApiBase = (
   raw === '' || raw === undefined ? DEFAULT_API : String(raw)
 ).replace(/\/$/, '');

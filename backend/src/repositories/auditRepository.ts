@@ -1,25 +1,28 @@
-import { db } from '../database/client.js';
+import { listDocs, createDoc, COLLECTIONS, Query, ID } from '../database/client.js';
 
 export const auditRepository = {
   async findRecent(limit = 200): Promise<any[]> {
-    const logs = await db.execute({
-      sql: `SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?`,
-      args: [limit],
-    });
-    return logs.rows as any[];
+    return listDocs(COLLECTIONS.audit_logs, [Query.orderDesc('timestamp')], limit);
   },
 
-  async insert(log: {
-    id: string;
+  async insert(entry: {
+    id?: string;
     timestamp: string;
     action: string;
-    details: string;
-    actor: string;
-    teacherId?: string | null;
+    details?: string;
+    actor?: string;
+    teacher_id?: string;
   }): Promise<void> {
-    await db.execute({
-      sql: 'INSERT INTO audit_logs (id, timestamp, action, details, actor, teacher_id) VALUES (?,?,?,?,?,?)',
-      args: [log.id, log.timestamp, log.action, log.details, log.actor, log.teacherId ?? null],
-    });
+    await createDoc(
+      COLLECTIONS.audit_logs,
+      {
+        timestamp: entry.timestamp,
+        action: entry.action,
+        details: entry.details || '',
+        actor: entry.actor || '',
+        teacher_id: entry.teacher_id || '',
+      },
+      entry.id || ID.unique()
+    );
   },
 };

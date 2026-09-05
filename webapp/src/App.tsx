@@ -538,8 +538,8 @@ export default function App() {
         <div className="liquid-orb liquid-orb-2" />
         <div className="text-center space-y-4 relative z-10 glass-card p-8 rounded-3xl max-w-sm w-full">
           <img
-            src={`${import.meta.env.BASE_URL}exam-bot-logo.png`}
-            alt="Exam Bot logo"
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="TestSpace"
             draggable={false}
             onContextMenu={(e) => e.preventDefault()}
             onDragStart={(e) => e.preventDefault()}
@@ -581,8 +581,8 @@ export default function App() {
               className="flex items-center gap-3 cursor-pointer select-none group"
             >
               <img
-                src={`${import.meta.env.BASE_URL}exam-bot-logo.png`}
-                alt="Exam Bot logo"
+                src={`${import.meta.env.BASE_URL}logo.png`}
+                alt="TestSpace"
                 draggable={false}
                 onContextMenu={(e) => e.preventDefault()}
                 onDragStart={(e) => e.preventDefault()}

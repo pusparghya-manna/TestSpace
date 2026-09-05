@@ -1,6 +1,8 @@
 {
   "name": "TestSpace",
-  "description": "An optimized, high-performance mock exam and quiz testing platform featuring real-time timed assessments, interactive diagrams, analytical performance review, question palette, and smart practice modes.",
+  "description": "Your smart exam partner \u2014 study, practice, succeed",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

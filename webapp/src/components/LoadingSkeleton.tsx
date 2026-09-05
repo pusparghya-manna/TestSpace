@@ -2,8 +2,8 @@ import React from 'react';
 
 const Logo: React.FC = () => (
   <img
-    src={`${import.meta.env.BASE_URL}exam-bot-logo.png`}
-    alt="Exam Bot logo"
+    src={`${import.meta.env.BASE_URL}logo.png`}
+    alt="TestSpace"
     draggable={false}
     onContextMenu={(e) => e.preventDefault()}
     onDragStart={(e) => e.preventDefault()}

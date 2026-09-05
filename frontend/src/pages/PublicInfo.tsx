@@ -47,7 +47,7 @@ function PublicShell({ title, children, legal = false }: { title: string; childr
         <Link to="/login" className="public-back-link">← Back to sign in</Link>
         <article className={`public-card mt-3 sm:mt-5 ${legal ? 'legal-card' : ''}`}>
           <div className="public-card-heading">
-            <img src="/exam-bot-logo.png" alt="Exam Bot logo" className="public-brand-logo" />
+            <img src="/logo.png" alt="TestSpace" className="public-brand-logo" />
             <div>
               <p className="public-eyebrow">TestSpace</p>
               <h1 className="public-title">{title}</h1>

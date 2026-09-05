@@ -86,8 +86,8 @@ export function Login({ onOk }: { onOk: () => void }) {
       <div className="mx-auto flex w-full max-w-[400px] flex-col items-center sm:max-w-[520px]">
         <header className="w-full text-center">
           <img
-            src="/exam-bot-logo.png"
-            alt="Exam Bot by TestSpace"
+            src="/logo.png"
+            alt="TestSpace"
             className="mx-auto h-28 w-28 rounded-full object-contain drop-shadow-[0_8px_18px_rgba(37,99,235,0.18)] sm:h-36 sm:w-36"
           />
         </header>

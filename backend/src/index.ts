@@ -15,7 +15,7 @@ async function main() {
   const app = express();
   let bootError: string | null = null;
 
-  // Liveness — process is up (Railway healthcheck). Independent of Telegram.
+  // Liveness — process is up (Appwrite healthcheck). Independent of Telegram.
   app.get('/health', (_req, res) => {
     res.status(200).json({ ok: true, service: 'testspace-api' });
   });
@@ -38,7 +38,7 @@ async function main() {
     });
   });
 
-  // Bind PORT immediately so Railway healthchecks can succeed
+  // Bind PORT immediately so Appwrite healthchecks can succeed
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`[boot] listening on 0.0.0.0:${PORT} (health up)`);
@@ -78,7 +78,7 @@ async function main() {
   } catch (e: any) {
     bootError = e?.message || String(e);
     console.error('[boot] FATAL database/store init:', bootError);
-    // In production, exit so Railway marks deploy unhealthy rather than serving a half-broken API
+    // In production, exit so platform marks deploy unhealthy rather than serving a half-broken API
     if (env.isProd) {
       process.exit(1);
     }

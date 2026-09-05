@@ -1,5 +1,5 @@
 /**
- * Same-origin `/api` so Vercel rewrites proxy to Railway.
+ * Same-origin `/api` when frontend and API share a host; otherwise set VITE_API_URL to the Appwrite Function URL.
  */
 const API_BASE = '';
 const FETCH_TIMEOUT_MS = 45_000;
