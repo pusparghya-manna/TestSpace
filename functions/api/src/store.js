@@ -226,14 +226,23 @@ export const store = {
 
   async getSettings() {
     const s = await getEntity('settings', 'system');
-    return (
-      s || {
-        id: 'system',
-        botWelcome: 'Welcome to TestSpace!',
-        maintenanceMode: false,
-        allowPractice: true,
-      }
-    );
+    const defaults = {
+      id: 'system',
+      botWelcome: 'Welcome to TestSpace!',
+      maintenanceMode: false,
+      allowPractice: true,
+      botActive: !!process.env.TELEGRAM_BOT_TOKEN,
+      botUsername: process.env.TELEGRAM_BOT_USERNAME
+        ? (process.env.TELEGRAM_BOT_USERNAME.startsWith('@')
+            ? process.env.TELEGRAM_BOT_USERNAME
+            : '@' + process.env.TELEGRAM_BOT_USERNAME)
+        : '@TestxSpace_bot',
+      telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ? '***' : '',
+      webhookUrl: 'https://testspace-api.appwrite.network/api/telegram/webhook',
+      autoPublishResults: true,
+      systemNotice: '',
+    };
+    return { ...defaults, ...(s || {}), botActive: !!process.env.TELEGRAM_BOT_TOKEN || !!(s && s.botActive) };
   },
   async updateSettings(partial) {
     const cur = await this.getSettings();
