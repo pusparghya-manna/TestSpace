@@ -1,0 +1,33 @@
+{
+  "projectId": "testspace",
+  "projectName": "TestSpace",
+  "settings": {
+    "services": {
+      "account": true,
+      "avatars": true,
+      "databases": true,
+      "locale": true,
+      "health": true,
+      "storage": true,
+      "teams": true,
+      "users": true,
+      "functions": true
+    }
+  },
+  "functions": [
+    {
+      "\$id": "testspace-api",
+      "name": "TestSpace API",
+      "runtime": "node-20.0",
+      "path": "backend",
+      "entrypoint": "dist/index.js",
+      "execute": ["any"],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "scopes": ["databases.read", "databases.write", "storage.read", "storage.write", "users.read", "users.write"]
+    }
+  ]
+}

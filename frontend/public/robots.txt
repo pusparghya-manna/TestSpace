@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://quizbot.pusparghya.de5.net/sitemap.xml
