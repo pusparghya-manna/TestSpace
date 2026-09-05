@@ -1,14 +1,13 @@
 /** Telegram Mini App → TestSpace Appwrite backend */
 
 /** Empty = same origin. Set VITE_API_URL to Appwrite Function URL when hosted separately. */
-const DEFAULT_API = '';
+const DEFAULT_API = 'https://testspace-api.appwrite.network';
 const raw = import.meta.env.VITE_API_URL;
-const useSameOriginProxy =
-  typeof window !== 'undefined' && /(?:appwrite\.network|appwrite\.io)$/i.test(window.location.hostname);
 const configuredApiBase = (
   raw === '' || raw === undefined ? DEFAULT_API : String(raw)
 ).replace(/\/$/, '');
-export const API_BASE = useSameOriginProxy ? '' : configuredApiBase;
+/** Always use explicit API base on Appwrite Sites (no same-origin /api proxy). */
+export const API_BASE = configuredApiBase;
 
 export function getTelegramInitData(): string {
   try {
