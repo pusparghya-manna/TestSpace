@@ -2,6 +2,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, clearToken } from '../api';
 import type { Exam, Attempt, SystemSettings, AuditLog, Student } from '../types';
 
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      res.headers.get('content-type')?.includes('text/html')
+        ? 'API returned HTML instead of JSON. Check VITE_API_URL points to the Appwrite Function.'
+        : 'Invalid JSON from server'
+    );
+  }
+}
+
 export type DashboardData = {
   exams: Exam[];
   students: Student[];
@@ -33,7 +46,7 @@ export const dashboardKeys = {
 export const dashboardQueryKey = dashboardKeys.data;
 
 async function parseJson(res: Response) {
-  return res.json().catch(() => ({}));
+  return safeJson(res);
 }
 
 async function fetchDashboard(): Promise<DashboardData> {
@@ -47,7 +60,7 @@ async function fetchDashboard(): Promise<DashboardData> {
     const d = await parseJson(res);
     throw new Error((d as any).error || `Failed to load (${res.status})`);
   }
-  const d = await res.json();
+  const d = await safeJson(res);
   return {
     exams: d.exams || [],
     students: d.students || [],
@@ -98,7 +111,7 @@ export function useExamsQuery(enabled: boolean) {
         throw new Error('UNAUTHORIZED');
       }
       if (res.ok) {
-        const d = await res.json();
+        const d = await safeJson(res);
         return (d.exams || d) as Exam[];
       }
       // Fallback: dashboard bundle
@@ -124,7 +137,7 @@ export function useStudentsQuery(enabled: boolean) {
         throw new Error('UNAUTHORIZED');
       }
       if (res.ok) {
-        const d = await res.json();
+        const d = await safeJson(res);
         return (d.students || d) as Student[];
       }
       const full = await fetchDashboard();
@@ -149,7 +162,7 @@ export function useResultsQuery(enabled: boolean) {
         throw new Error('UNAUTHORIZED');
       }
       if (res.ok) {
-        const d = await res.json();
+        const d = await safeJson(res);
         return {
           attempts: (d.attempts || []) as Attempt[],
           exams: (d.exams || []) as Exam[],

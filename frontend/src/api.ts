@@ -1,7 +1,8 @@
 /**
- * Same-origin `/api` when frontend and API share a host; otherwise set VITE_API_URL to the Appwrite Function URL.
+ * API base URL. On Appwrite Sites this must be the Function domain.
+ * Set VITE_API_URL at build time (Sites → Variables).
  */
-const API_BASE = '';
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const FETCH_TIMEOUT_MS = 45_000;
 export const OCR_FETCH_TIMEOUT_MS = 180_000;
 
