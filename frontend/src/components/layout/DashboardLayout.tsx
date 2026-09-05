@@ -78,7 +78,7 @@ export function DashboardLayout() {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      await fetch(`${import.meta.env.VITE_API_URL || 'https://testspace-api.appwrite.network'}/api/auth/logout`, { method: 'POST', credentials: 'omit' });
     } catch {
       // Local cleanup still happens if the network is unavailable.
     }
