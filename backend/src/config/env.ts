@@ -54,11 +54,12 @@ export const env = {
   port: Number(process.env.PORT) || 3000,
   telegramBotToken: required('TELEGRAM_BOT_TOKEN'),
   /** Appwrite */
-  appwriteEndpoint: process.env.APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
+  appwriteEndpoint: process.env.APPWRITE_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1',
   appwriteProjectId: process.env.APPWRITE_PROJECT_ID || '',
   appwriteApiKey: process.env.APPWRITE_API_KEY || '',
-  appwriteDatabaseId: process.env.APPWRITE_DATABASE_ID || 'testspace',
-  appwriteBucketId: process.env.APPWRITE_BUCKET_ID || 'question_images',
+  appwriteDatabaseId: process.env.APPWRITE_DATABASE_ID || '6a9b8c5700310779ff5c',
+  appwriteTableId: process.env.APPWRITE_TABLE_ID || '6a9b8c670019ae6d8d79',
+  appwriteBucketId: process.env.APPWRITE_BUCKET_ID || '6a9b8c9a0024f0a1f2f4',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   allowedOrigins: (process.env.ALLOWED_ORIGINS ||

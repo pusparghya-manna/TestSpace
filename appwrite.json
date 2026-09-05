@@ -1,33 +1,28 @@
 {
-  "projectId": "testspace",
+  "projectId": "6a9b1eb30039dc042f42",
   "projectName": "TestSpace",
+  "endpoint": "https://sgp.cloud.appwrite.io/v1",
   "settings": {
     "services": {
       "account": true,
       "avatars": true,
       "databases": true,
+      "tablesdb": true,
       "locale": true,
       "health": true,
       "storage": true,
       "teams": true,
       "users": true,
-      "functions": true
+      "functions": true,
+      "sites": true
     }
   },
-  "functions": [
-    {
-      "\$id": "testspace-api",
-      "name": "TestSpace API",
-      "runtime": "node-20.0",
-      "path": "backend",
-      "entrypoint": "dist/index.js",
-      "execute": ["any"],
-      "events": [],
-      "schedule": "",
-      "timeout": 60,
-      "enabled": true,
-      "logging": true,
-      "scopes": ["databases.read", "databases.write", "storage.read", "storage.write", "users.read", "users.write"]
-    }
-  ]
+  "resources": {
+    "databaseId": "6a9b8c5700310779ff5c",
+    "databaseName": "Production TablesDB",
+    "tableId": "6a9b8c670019ae6d8d79",
+    "tableName": "TestSpace",
+    "bucketId": "6a9b8c9a0024f0a1f2f4",
+    "bucketName": "TestSpace"
+  }
 }
