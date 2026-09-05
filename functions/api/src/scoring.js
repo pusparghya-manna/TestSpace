@@ -19,37 +19,55 @@ export function calculateAttemptScore(exam, answers = {}, timeTakenSeconds = 0) 
   const questions = exam?.questions || [];
   let score = 0;
   let maxScore = 0;
-  let correct = 0;
-  let wrong = 0;
-  let unattempted = 0;
+  let correctCount = 0;
+  let wrongCount = 0;
+  let skippedCount = 0;
   for (const q of questions) {
     const marks = Number(q.marks ?? 1) || 1;
     const neg = Number(q.negativeMarks ?? q.negative_marks ?? exam?.negativeMarking ?? 0) || 0;
     maxScore += marks;
     const sel = answers[q.id];
     if (sel === undefined || sel === null || sel === '') {
-      unattempted++;
+      skippedCount++;
       continue;
     }
     if (q.answer !== null && q.answer !== undefined && Number(sel) === Number(q.answer)) {
       score += marks;
-      correct++;
+      correctCount++;
     } else {
       score -= neg;
-      wrong++;
+      wrongCount++;
     }
   }
   if (score < 0) score = 0;
   const percentage = maxScore > 0 ? Math.round((score / maxScore) * 10000) / 100 : 0;
-  return { score, maxScore, percentage, correct, wrong, unattempted, timeTakenSeconds };
+  return {
+    score,
+    maxScore,
+    percentage,
+    correctCount,
+    wrongCount,
+    skippedCount,
+    // aliases for older clients
+    correct: correctCount,
+    wrong: wrongCount,
+    unattempted: skippedCount,
+    timeTakenSeconds,
+  };
 }
 
 export function secondsLeft(attempt) {
-  if (!attempt?.endsAt) {
-    const start = attempt?.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
-    const dur = (Number(attempt?.durationMinutes) || 60) * 60 * 1000;
-    const end = start + dur + (Number(attempt?.pausedTotalMs) || 0);
-    return Math.max(0, Math.floor((end - Date.now()) / 1000));
+  const endIso = attempt?.expiresAt || attempt?.endsAt;
+  if (endIso) {
+    const end = new Date(endIso).getTime();
+    if (Number.isFinite(end)) {
+      const pausedExtra = Number(attempt?.pausedSeconds || 0) * 1000;
+      // endsAt already accounts for duration; pausedSeconds is informational
+      return Math.max(0, Math.floor((end - Date.now()) / 1000));
+    }
   }
-  return Math.max(0, Math.floor((new Date(attempt.endsAt).getTime() - Date.now()) / 1000));
+  const start = attempt?.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
+  const dur = (Number(attempt?.durationMinutes) || 60) * 60 * 1000;
+  const end = start + dur;
+  return Math.max(0, Math.floor((end - Date.now()) / 1000));
 }

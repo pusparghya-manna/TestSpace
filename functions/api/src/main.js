@@ -709,17 +709,28 @@ export default async ({ req, res, log, error }) => {
       let attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
       if (attempt.status !== 'IN_PROGRESS') return json(res, 400, { error: 'Already submitted' });
-      if (body.answers && typeof body.answers === 'object') attempt.answers = { ...attempt.answers, ...body.answers };
-      const exam = await store.getExamById(attempt.examId);
+      if (body.answers && typeof body.answers === 'object') {
+        attempt.answers = { ...(attempt.answers || {}), ...body.answers };
+      }
+      let exam = await store.getExamById(attempt.examId);
+      exam = await hydrateExamQuestions(exam);
       const timeTaken = Math.max(0, Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000));
       const stats = calculateAttemptScore(exam, attempt.answers || {}, timeTaken);
       Object.assign(attempt, stats, {
         status: 'SUBMITTED',
         submittedAt: new Date().toISOString(),
         timeTakenSeconds: timeTaken,
+        isSubmitted: true,
       });
       await store.saveAttempt(attempt);
-      return json(res, 200, { attempt, exam: { id: exam?.id, title: exam?.title, resultVisibility: exam?.resultVisibility || 'PUBLISHED' } });
+      return json(res, 200, {
+        attempt,
+        exam: {
+          id: exam?.id,
+          title: exam?.title,
+          resultVisibility: exam?.resultVisibility || 'PUBLISHED',
+        },
+      });
     }
 
     if (path === '/api/webapp/results' && method === 'POST') {
@@ -735,6 +746,12 @@ export default async ({ req, res, log, error }) => {
           ...a,
           examTitle: examMap[a.examId]?.title || 'Exam',
           resultVisibility: examMap[a.examId]?.resultVisibility || 'PUBLISHED',
+          correctCount: a.correctCount ?? a.correct ?? 0,
+          wrongCount: a.wrongCount ?? a.wrong ?? 0,
+          skippedCount: a.skippedCount ?? a.unattempted ?? 0,
+          score: a.score ?? 0,
+          maxScore: a.maxScore ?? 0,
+          percentage: a.percentage ?? 0,
         })),
       });
     }
@@ -777,15 +794,20 @@ export default async ({ req, res, log, error }) => {
       let attempts = (await store.getAttempts()).filter((a) => a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED');
       if (examId) attempts = attempts.filter((a) => a.examId === examId);
       attempts.sort((a, b) => (b.percentage || 0) - (a.percentage || 0) || (a.timeTakenSeconds || 0) - (b.timeTakenSeconds || 0));
-      return json(res, 200, {
-        leaderboard: attempts.slice(0, 50).map((a, i) => ({
+      const exam = examId ? await store.getExamById(examId) : null;
+      const rows = attempts.slice(0, 50).map((a, i) => ({
           rank: i + 1,
           name: a.studentName || `User ${a.telegramUserId}`,
-          score: a.score,
-          maxScore: a.maxScore,
-          percentage: a.percentage,
+          score: a.score ?? 0,
+          maxScore: a.maxScore ?? 0,
+          percentage: a.percentage ?? 0,
+          timeTakenSeconds: a.timeTakenSeconds ?? 0,
           isMe: Number(a.telegramUserId) === auth.userId,
-        })),
+        }));
+      return json(res, 200, {
+        exam: exam ? { id: exam.id, title: exam.title } : { id: examId || '', title: 'Exam' },
+        rows,
+        leaderboard: rows,
       });
     }
 

@@ -109,8 +109,8 @@ function mapAttemptFromStart(
 function mapResult(
   r: ApiAttempt & { examTitle?: string; resultVisibility?: string }
 ): ExamAttempt {
-  const correct = r.correctCount ?? 0;
-  const wrong = r.wrongCount ?? 0;
+  const correct = r.correctCount ?? (r as any).correct ?? 0;
+  const wrong = r.wrongCount ?? (r as any).wrong ?? 0;
   const attempted = correct + wrong;
   return {
     id: r.id,
@@ -131,9 +131,9 @@ function mapResult(
     score: r.score,
     maxScore: r.maxScore,
     percentage: r.percentage,
-    correctCount: r.correctCount,
-    wrongCount: r.wrongCount,
-    skippedCount: r.skippedCount,
+    correctCount: r.correctCount ?? (r as any).correct ?? 0,
+    wrongCount: r.wrongCount ?? (r as any).wrong ?? 0,
+    skippedCount: r.skippedCount ?? (r as any).unattempted ?? 0,
     accuracy: attempted > 0 ? Math.round((correct / attempted) * 100) : 0,
     rank: r.rank,
     status: r.status,
