@@ -53,7 +53,7 @@ export async function api(
     const res = await fetch(url, {
       ...fetchOptions,
       headers,
-      credentials: 'include',
+      credentials: 'omit',
       signal: fetchOptions.signal || ctrl.signal,
     });
     if (
