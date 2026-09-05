@@ -606,36 +606,32 @@ export default async ({ req, res, log, error }) => {
     if (path === '/api/webapp/exam' && method === 'POST') {
       const auth = authWebapp(req, res);
       if (!auth) return;
-      const exam = await store.getExamById(body.examId);
+      let exam = await store.getExamById(body.examId);
       if (!exam) return json(res, 404, { error: 'Exam not found' });
+      exam = await hydrateExamQuestions(exam);
       return json(res, 200, {
-        exam: withEffectiveStatus({
-          ...exam,
-          questions: (exam.questions || []).map((q) => ({
-            id: q.id,
-            marks: q.marks,
-            subject: q.subject,
-            // hide answers until submit review
-          })),
-        }),
+        exam: summaryExam(exam),
+        questions: publicQuestions(exam),
       });
     }
 
     if (path === '/api/webapp/start' && method === 'POST') {
       const auth = authWebapp(req, res);
       if (!auth) return;
-      const exam = await store.getExamById(body.examId);
+      let exam = await store.getExamById(body.examId);
       if (!exam) return json(res, 404, { error: 'Exam not found' });
-      const status = effectiveExamStatus(exam);
-      if (status !== 'LIVE' && status !== 'SCHEDULED' && !body.practice) {
-        // allow scheduled for practice
+      exam = await hydrateExamQuestions(exam);
+      const qs = publicQuestions(exam);
+      if (!qs.length) {
+        return json(res, 400, { error: 'This exam has no questions yet. Ask your teacher to publish questions.' });
       }
       const student = await store.getStudentByTelegramId(auth.userId);
       const existing = (await store.getStudentAttempts(exam.id, auth.userId)).find((a) => a.status === 'IN_PROGRESS');
       if (existing && secondsLeft(existing) > 0) {
         return json(res, 200, {
           attempt: existing,
-          exam: sanitizeExamForStudent(exam),
+          exam: summaryExam(exam),
+          questions: qs,
           secondsLeft: secondsLeft(existing),
         });
       }
@@ -653,6 +649,7 @@ export default async ({ req, res, log, error }) => {
         currentQuestionIndex: 0,
         startedAt,
         endsAt,
+        expiresAt: endsAt,
         durationMinutes,
         attemptNumber: await store.nextAttemptNumber(exam.id, auth.userId),
         practice: !!body.practice,
@@ -660,7 +657,8 @@ export default async ({ req, res, log, error }) => {
       await store.saveAttempt(attempt);
       return json(res, 200, {
         attempt,
-        exam: sanitizeExamForStudent(exam),
+        exam: summaryExam(exam),
+        questions: qs,
         secondsLeft: secondsLeft(attempt),
       });
     }
@@ -747,8 +745,9 @@ export default async ({ req, res, log, error }) => {
       const attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
       if (attempt.status !== 'SUBMITTED' && attempt.status !== 'AUTO_SUBMITTED') return json(res, 400, { error: 'Exam not submitted' });
-      const exam = await store.getExamById(attempt.examId);
+      let exam = await store.getExamById(attempt.examId);
       if (!exam) return json(res, 404, { error: 'Exam not found' });
+      exam = await hydrateExamQuestions(exam);
       if (exam.resultVisibility && exam.resultVisibility !== 'PUBLISHED') return json(res, 403, { error: 'Results not published' });
       const questions = (exam.questions || []).map((q) => {
         const sel = attempt.answers?.[q.id];
@@ -796,6 +795,64 @@ export default async ({ req, res, log, error }) => {
     return json(res, 500, { error: String(e?.message || e) });
   }
 };
+
+
+function summaryExam(e) {
+  if (!e) return null;
+  return {
+    id: e.id,
+    title: e.title,
+    subject: e.subject || '',
+    className: e.className || e.class_name || '',
+    totalQuestions: e.totalQuestions || e.questions?.length || 0,
+    durationMinutes: e.durationMinutes || 60,
+    totalMarks: e.totalMarks || 0,
+    startDate: e.startDate,
+    status: effectiveExamStatus(e),
+    resultVisibility: e.resultVisibility || 'PUBLISHED',
+    leaderboardVisibility: e.leaderboardVisibility || 'PUBLISHED',
+    negativeMarking: e.negativeMarking || 0,
+  };
+}
+
+function publicQuestions(exam) {
+  return (exam?.questions || []).map((q) => ({
+    id: q.id,
+    question: q.question || '',
+    options: Array.isArray(q.options) ? q.options : [],
+    marks: q.marks ?? 1,
+    negativeMarks: q.negativeMarks ?? q.negative_marks ?? 0,
+    subject: q.subject || exam?.subject || '',
+    imageFileId: q.image?.fileId || q.imageFileId || null,
+    imageUrl: (q.image?.fileId || q.imageFileId)
+      ? `/api/media/telegram/${encodeURIComponent(q.image?.fileId || q.imageFileId)}`
+      : null,
+  }));
+}
+
+async function hydrateExamQuestions(exam) {
+  if (!exam) return exam;
+  if (Array.isArray(exam.questions) && exam.questions.length > 0) {
+    // normalize options
+    exam.questions = exam.questions.map((q) => ({
+      ...q,
+      options: Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? (() => { try { return JSON.parse(q.options); } catch { return []; } })() : []),
+    }));
+    return exam;
+  }
+  const all = await store.getQuestions();
+  const qs = all
+    .filter((q) => q.examId === exam.id || q.exam_id === exam.id)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map((q) => ({
+      ...q,
+      options: Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? (() => { try { return JSON.parse(q.options); } catch { return []; } })() : []),
+    }));
+  exam.questions = qs;
+  exam.totalQuestions = qs.length || exam.totalQuestions || 0;
+  return exam;
+}
+
 
 function sanitizeExamForStudent(exam) {
   if (!exam) return null;
