@@ -13,6 +13,26 @@ Telegram quiz / exam platform with a multi-teacher dashboard — powered entirel
 
 ---
 
+## Live deployment (Appwrite Cloud — Singapore)
+
+| Service | URL |
+|---------|-----|
+| **Teacher Dashboard** | https://testspace-dashboard.appwrite.network |
+| **Student Mini App** | https://testspace-webapp.appwrite.network |
+| **API Function** | https://testspace-api.appwrite.network |
+| **Health** | https://testspace-api.appwrite.network/health |
+
+| Resource | ID |
+|----------|-----|
+| Project | `6a9b1eb30039dc042f42` |
+| TablesDB | `6a9b8c5700310779ff5c` |
+| Table | `6a9b8c670019ae6d8d79` |
+| Storage bucket | `6a9b8c9a0024f0a1f2f4` |
+| Function | `api` |
+| Sites | `dashboard`, `webapp` |
+
+API smoke endpoints: `/health`, `/ready`, `/api/auth/register`, `/api/auth/login`, `/api/exams`, `/api/students`, `/api/telegram/webhook`.
+
 ## Environment variables
 
 ### Backend (Appwrite Function / local)
