@@ -459,9 +459,10 @@ export default function App() {
       // Flush only the queued deltas. If the backend expiry sweep has already
       // completed the attempt, reuse that response instead of submitting twice.
       const synced = await attemptSync.flush();
+      const localAnswers = { ...(snapshot.answers || {}) };
       const attempt = synced && synced.status !== 'IN_PROGRESS'
         ? synced
-        : (await webappApi.submit(snapshot.id)).attempt;
+        : (await webappApi.submit(snapshot.id, localAnswers)).attempt;
       const completed = mapResult({
         ...attempt,
         examTitle: snapshot.examTitle,

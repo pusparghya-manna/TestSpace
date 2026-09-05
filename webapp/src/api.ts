@@ -252,8 +252,8 @@ export const webappApi = {
       secondsLeft: number;
     }>('/api/webapp/pause', { attemptId, pause }, { timeoutMs: 10_000, maxRetries: 1 }),
 
-  submit: (attemptId: string) =>
-    api<{ attempt: ApiAttempt }>('/api/webapp/submit', { attemptId }),
+  submit: (attemptId: string, answers?: Record<string, number | null>) =>
+    api<{ attempt: ApiAttempt }>('/api/webapp/submit', { attemptId, answers: answers || {} }),
 
   results: () =>
     api<{

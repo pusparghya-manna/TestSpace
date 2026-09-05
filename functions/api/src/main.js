@@ -677,9 +677,31 @@ export default async ({ req, res, log, error }) => {
       const auth = authWebapp(req, res);
       if (!auth) return;
       let attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
-      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
+      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) {
+        return json(res, 404, { error: 'Attempt not found' });
+      }
       attempt = await finalizeExpiredAttempt(attempt);
+
+      // Apply queued answer deltas from Mini App (questionId → option index | null)
+      if (attempt.status === 'IN_PROGRESS') {
+        const changes = body.changes && typeof body.changes === 'object' ? body.changes : {};
+        attempt.answers = { ...(attempt.answers || {}) };
+        for (const [qid, val] of Object.entries(changes)) {
+          if (val === null || val === undefined || val === '') {
+            delete attempt.answers[qid];
+          } else {
+            attempt.answers[qid] = Number(val);
+          }
+        }
+        if (body.currentQuestionIndex !== undefined && body.currentQuestionIndex !== null) {
+          attempt.currentQuestionIndex = Number(body.currentQuestionIndex) || 0;
+        }
+        attempt.updatedAt = new Date().toISOString();
+        await store.saveAttempt(attempt);
+      }
+
       return json(res, 200, {
+        ok: true,
         attempt,
         secondsLeft: secondsLeft(attempt),
         status: attempt.status,
@@ -707,14 +729,38 @@ export default async ({ req, res, log, error }) => {
       const auth = authWebapp(req, res);
       if (!auth) return;
       let attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
-      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
-      if (attempt.status !== 'IN_PROGRESS') return json(res, 400, { error: 'Already submitted' });
-      if (body.answers && typeof body.answers === 'object') {
-        attempt.answers = { ...(attempt.answers || {}), ...body.answers };
+      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) {
+        return json(res, 404, { error: 'Attempt not found' });
       }
+      if (attempt.status !== 'IN_PROGRESS') {
+        // Idempotent: return already-scored attempt
+        return json(res, 200, {
+          attempt,
+          exam: {
+            id: attempt.examId,
+            title: '',
+            resultVisibility: 'PUBLISHED',
+          },
+        });
+      }
+
+      // Merge client answers (local state + any last-second picks) over stored answers
+      const incoming =
+        (body.answers && typeof body.answers === 'object' && body.answers) ||
+        (body.changes && typeof body.changes === 'object' && body.changes) ||
+        {};
+      attempt.answers = { ...(attempt.answers || {}) };
+      for (const [qid, val] of Object.entries(incoming)) {
+        if (val === null || val === undefined || val === '') delete attempt.answers[qid];
+        else attempt.answers[qid] = Number(val);
+      }
+
       let exam = await store.getExamById(attempt.examId);
       exam = await hydrateExamQuestions(exam);
-      const timeTaken = Math.max(0, Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000));
+      const timeTaken = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000)
+      );
       const stats = calculateAttemptScore(exam, attempt.answers || {}, timeTaken);
       Object.assign(attempt, stats, {
         status: 'SUBMITTED',
