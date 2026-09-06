@@ -107,7 +107,10 @@ export default async ({ req, res, log, error }) => {
     }
   }
 
-  if ((req.method || '').toUpperCase() === 'OPTIONS') return res.empty();
+  if ((req.method || '').toUpperCase() === 'OPTIONS') {
+    // Preflight MUST include CORS headers or browsers report "Failed to fetch"
+    return res.text('', 204, corsHeaders(req));
+  }
 
   const method = (req.method || 'GET').toUpperCase();
   let path = req.path || '/';
@@ -145,7 +148,7 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, {
         ok: true,
         service: 'testspace-api',
-        version: '4.1.0',
+        version: '4.1.1',
         features: ['auth', 'exams', 'questions', 'students', 'results', 'ocr', 'webapp', 'telegram'],
         ocrConfigured: !!process.env.GEMINI_API_KEY,
         telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,

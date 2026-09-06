@@ -23,7 +23,12 @@ export function assertProductionSecrets() {
 }
 
 export function corsHeaders(req) {
-  const origin = String(req?.headers?.origin || req?.headers?.Origin || '');
+  const raw = req?.headers || {};
+  const origin = String(
+    raw.origin || raw.Origin ||
+    (typeof raw.get === 'function' ? raw.get('origin') : '') ||
+    ''
+  );
   const allowed = String(process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
@@ -36,14 +41,18 @@ export function corsHeaders(req) {
   ];
   const list = allowed.length ? allowed : defaults;
   const ok =
+    !origin ||
     list.includes(origin) ||
     /^https:\/\/[a-z0-9-]+\.appwrite\.network$/i.test(origin) ||
-    !origin;
+    /^https:\/\/web\.telegram\.org$/i.test(origin) ||
+    origin === 'null';
+  const allowOrigin = origin && ok ? origin : list[0];
   return {
-    'Access-Control-Allow-Origin': ok && origin ? origin : list[0],
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Telegram-Init-Data',
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Telegram-Init-Data, X-Requested-With',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
 }
