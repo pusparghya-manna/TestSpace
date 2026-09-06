@@ -1,6 +1,8 @@
 {
-  "name": "Quiz Bot by Pusparghya",
-  "description": "An optimized, high-performance mock exam and quiz testing platform featuring real-time timed assessments, interactive diagrams, analytical performance review, question palette, and smart practice modes.",
+  "name": "TestSpace",
+  "description": "TestSpace \u2014 student exam platform",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -103,7 +103,7 @@ export function DashboardLayout() {
         <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <img
-              src="/logo.png"
+              src="/logo.svg"
               alt="TestSpace"
               className="w-8 h-8 rounded-lg object-contain shrink-0"
             />

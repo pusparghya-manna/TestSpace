@@ -570,7 +570,7 @@ export default function App() {
               className="flex items-center gap-3 cursor-pointer select-none group"
             >
               <img
-                src={`${import.meta.env.BASE_URL}logo.png`}
+                src={`${import.meta.env.BASE_URL}logo.svg`}
                 alt="TestSpace logo"
                 draggable={false}
                 onContextMenu={(e) => e.preventDefault()}

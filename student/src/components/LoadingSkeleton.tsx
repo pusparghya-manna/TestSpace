@@ -2,7 +2,7 @@ import React from 'react';
 
 const Logo: React.FC = () => (
   <img
-    src={`${import.meta.env.BASE_URL}exam-bot-logo.png`}
+    src={`${import.meta.env.BASE_URL}logo.svg`}
     alt="Exam Bot logo"
     draggable={false}
     onContextMenu={(e) => e.preventDefault()}

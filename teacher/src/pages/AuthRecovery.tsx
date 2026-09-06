@@ -4,7 +4,7 @@ import { firebaseConfigured, firebaseResetPassword, firebaseResetRequest, fireba
 import { inp, btnP, card } from '../styles/ui';
 
 function Shell({ children }: { children: ReactNode }) {
-  return <div className="min-h-full flex items-center justify-center bg-slate-50 px-5 py-10"><div className="w-full max-w-md"><div className="text-center mb-6"><img src="/logo.png" alt="TestSpace logo" className="mx-auto w-20 h-20 rounded-2xl object-contain mb-3" /><h1 className="text-2xl font-extrabold text-slate-900">TestSpace</h1></div>{children}<p className="text-center text-xs text-slate-400 mt-5"><Link to="/login" className="font-bold text-blue-600 hover:text-blue-800">Back to sign in</Link></p></div></div>;
+  return <div className="min-h-full flex items-center justify-center bg-slate-50 px-5 py-10"><div className="w-full max-w-md"><div className="text-center mb-6"><img src="/logo.svg" alt="TestSpace logo" className="mx-auto w-20 h-20 rounded-2xl object-contain mb-3" /><h1 className="text-2xl font-extrabold text-slate-900">TestSpace</h1></div>{children}<p className="text-center text-xs text-slate-400 mt-5"><Link to="/login" className="font-bold text-blue-600 hover:text-blue-800">Back to sign in</Link></p></div></div>;
 }
 
 export function ForgotPasswordPage() {

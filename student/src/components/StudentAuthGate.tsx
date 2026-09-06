@@ -40,18 +40,11 @@ export function StudentAuthGate({ onAuthed }: { onAuthed: () => void }) {
         className="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 space-y-4 text-center border border-slate-100"
       >
         <img
-          src={`${import.meta.env.BASE_URL}logo.png`}
+          src={`${import.meta.env.BASE_URL}logo.svg`}
           alt="TestSpace"
           className="w-16 h-16 rounded-2xl object-contain bg-white mx-auto"
           width={64}
           height={64}
-          onError={(e) => {
-            const el = e.target as HTMLImageElement;
-            if (!el.dataset.fallback) {
-              el.dataset.fallback = '1';
-              el.src = `${import.meta.env.BASE_URL}exam-bot-logo.png`;
-            }
-          }}
         />
         <div>
           <h1 className="text-xl font-bold text-slate-900">TestSpace Student</h1>
