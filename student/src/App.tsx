@@ -178,9 +178,15 @@ function writeWebappCache(data: {
 }
 
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    try { return Boolean(localStorage.getItem('ts_student_token') || sessionStorage.getItem('ts_student_token')); }
+    catch { return false; }
+  });
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [inTelegram, setInTelegram] = useState(false);
+  const [inTelegram, setInTelegram] = useState(() => {
+    try { return Boolean(localStorage.getItem('ts_student_token') || sessionStorage.getItem('ts_student_token')); }
+    catch { return false; }
+  });
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [availableExams, setAvailableExams] = useState<Exam[]>([]);
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
