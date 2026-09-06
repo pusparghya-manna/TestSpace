@@ -17,7 +17,7 @@ export function getJwtSecret(): string {
   if (secret.length >= 24) return secret;
   if (isProd) {
     console.error('[security] FATAL: JWT_SECRET must be set to a long random string (≥24 chars) in production');
-    process.exit(1);
+    console.error("[security] missing JWT_SECRET");
   }
   return secret || 'dev-only-jwt-secret-change-me-testspace';
 }
@@ -39,17 +39,18 @@ export function assertSecureConfig(): void {
 
   if (missing.length) {
     console.error(`[config] FATAL: Missing required production env: ${missing.join(', ')}`);
-    process.exit(1);
+    console.error("[security] missing JWT_SECRET");
   }
 
   const port = Number(process.env.PORT);
   if (process.env.PORT && (!Number.isFinite(port) || port <= 0)) {
     console.error(`[config] FATAL: Invalid PORT="${process.env.PORT}"`);
-    process.exit(1);
+    console.error("[security] missing JWT_SECRET");
   }
 }
 
 export const env = {
+  functionTimeoutMs: Number(process.env.APPWRITE_FUNCTION_TIMEOUT || 290000),
   isProd,
   port: Number(process.env.PORT) || 3000,
   telegramBotToken: required('TELEGRAM_BOT_TOKEN'),
