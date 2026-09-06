@@ -512,8 +512,7 @@ export default async ({ req, res, log, error }) => {
       for (const a of attempts) {
         rows.push([a.id, a.examId, a.studentName || a.telegramUserId, a.score, a.maxScore, a.percentage, a.status]);
       }
-      const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('
-');
+      const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
       return res.send(csv, 200, { ...corsHeaders(req), 'Content-Type': 'text/csv' });
     }
 
