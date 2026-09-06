@@ -3,7 +3,7 @@
  */
 import { ID } from 'node-appwrite';
 import { store } from './lib/store.js';
-import { registerTeacher, loginTeacher, teacherFromHeaders } from './lib/auth.js';
+import { registerTeacher, loginTeacher, teacherFromHeaders, resetTeacherPassword } from './lib/auth.js';
 import { effectiveExamStatus, withEffectiveStatus, calculateAttemptScore, secondsLeft, rankOfficialAttempts } from './lib/scoring.js';
 import { parseQuestionsFromMedia } from './services/ocr.js';
 import { validateTelegramWebAppData } from './lib/webappAuth.js';
@@ -148,7 +148,7 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, {
         ok: true,
         service: 'testspace-api',
-        version: '4.1.1',
+        version: '4.1.2',
         features: ['auth', 'exams', 'questions', 'students', 'results', 'ocr', 'webapp', 'telegram'],
         ocrConfigured: !!process.env.GEMINI_API_KEY,
         telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
@@ -187,6 +187,18 @@ export default async ({ req, res, log, error }) => {
     }
     if (path === '/api/auth/forgot-password' && method === 'POST') {
       return json(res, 501, { error: 'Password recovery is not available. Contact your administrator.' }, req);
+    }
+    // Emergency password reset — requires X-Cron-Secret (not public)
+    if (path === '/api/auth/admin-reset-password' && method === 'POST') {
+      const secret = String(process.env.CRON_SECRET || '').trim();
+      const hdr = String(req.headers?.['x-cron-secret'] || req.headers?.['X-Cron-Secret'] || '').trim();
+      if (!secret || hdr !== secret) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+      try {
+        const out = await resetTeacherPassword(body.username, body.password || body.newPassword);
+        return json(res, 200, out, req);
+      } catch (e) {
+        return json(res, e.status || 400, { error: e.message }, req);
+      }
     }
     if (path === '/api/auth/firebase/exchange' && method === 'POST') {
       return json(res, 501, { error: 'Google/Firebase login is disabled. Use username and password.' }, req);

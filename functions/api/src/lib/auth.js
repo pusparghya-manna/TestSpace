@@ -3,6 +3,10 @@ import bcrypt from 'bcryptjs';
 import { store } from './store.js';
 import { getJwtSecret } from './security.js';
 
+function normUser(username) {
+  return String(username || '').trim().toLowerCase();
+}
+
 export function signTeacher(teacher) {
   return jwt.sign(
     { username: teacher.username, name: teacher.name, email: teacher.email },
@@ -20,20 +24,35 @@ export function verifyToken(token) {
 }
 
 export function teacherFromHeaders(headers) {
-  const auth = headers['authorization'] || headers['Authorization'] || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const raw = headers || {};
+  const auth =
+    raw['authorization'] ||
+    raw['Authorization'] ||
+    (typeof raw.get === 'function' ? raw.get('authorization') : '') ||
+    '';
+  const token = String(auth).startsWith('Bearer ') ? String(auth).slice(7).trim() : '';
   if (!token) return null;
   return verifyToken(token);
 }
 
 export async function registerTeacher(username, password, name, email) {
-  username = String(username || '').trim();
+  username = normUser(username);
   password = String(password || '');
   name = String(name || username).trim();
   email = String(email || '').trim().toLowerCase();
-  if (!username || password.length < 8) throw new Error('Username and password (min 8) required');
+  if (!username || username.length < 3) {
+    throw Object.assign(new Error('Username must be at least 3 characters'), { status: 400 });
+  }
+  if (password.length < 8) {
+    throw Object.assign(new Error('Password must be at least 8 characters'), { status: 400 });
+  }
   const existing = await store.getTeacher(username);
-  if (existing) throw Object.assign(new Error('Username already registered'), { status: 409 });
+  if (existing) {
+    throw Object.assign(
+      new Error('Username already registered. Please login instead.'),
+      { status: 409 }
+    );
+  }
   const password_hash = await bcrypt.hash(password, 12);
   const teacher = {
     username,
@@ -44,17 +63,59 @@ export async function registerTeacher(username, password, name, email) {
     auth_provider: 'password',
   };
   await store.saveTeacher(teacher);
+  // verify write
+  const saved = await store.getTeacher(username);
+  if (!saved?.password_hash) {
+    throw Object.assign(new Error('Failed to save account. Try again.'), { status: 500 });
+  }
   return { token: signTeacher(teacher), teacher: { username, name, email } };
 }
 
 export async function loginTeacher(username, password) {
-  username = String(username || '').trim();
+  username = normUser(username);
+  password = String(password || '');
+  if (!username || !password) {
+    throw Object.assign(new Error('Username and password required'), { status: 401 });
+  }
   const teacher = await store.getTeacher(username);
-  if (!teacher?.password_hash) throw Object.assign(new Error('Invalid credentials'), { status: 401 });
-  const ok = await bcrypt.compare(String(password || ''), teacher.password_hash);
-  if (!ok) throw Object.assign(new Error('Invalid credentials'), { status: 401 });
+  if (!teacher?.password_hash) {
+    throw Object.assign(new Error('Invalid credentials'), { status: 401 });
+  }
+  const ok = await bcrypt.compare(password, teacher.password_hash);
+  if (!ok) {
+    throw Object.assign(new Error('Invalid credentials'), { status: 401 });
+  }
   return {
     token: signTeacher(teacher),
-    teacher: { username: teacher.username, name: teacher.name, email: teacher.email },
+    teacher: {
+      username: teacher.username,
+      name: teacher.name,
+      email: teacher.email,
+    },
   };
+}
+
+/** Emergency password set — requires CRON_SECRET header match */
+export async function resetTeacherPassword(username, newPassword) {
+  username = normUser(username);
+  newPassword = String(newPassword || '');
+  if (!username || newPassword.length < 8) {
+    throw Object.assign(new Error('Username and password (min 8) required'), { status: 400 });
+  }
+  let teacher = await store.getTeacher(username);
+  const password_hash = await bcrypt.hash(newPassword, 12);
+  if (!teacher) {
+    teacher = {
+      username,
+      name: username,
+      email: '',
+      password_hash,
+      created_at: new Date().toISOString(),
+      auth_provider: 'password',
+    };
+  } else {
+    teacher = { ...teacher, password_hash };
+  }
+  await store.saveTeacher(teacher);
+  return { ok: true, username };
 }
