@@ -111,15 +111,6 @@ export function DashboardLayout() {
               <div className="font-bold text-[13px] text-slate-900 leading-tight">
                 TestSpace
               </div>
-              <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    settings.botActive ? 'bg-emerald-500 pulse-ring' : 'bg-slate-300'
-                  }`}
-                />
-                {settings.botActive ? 'Bot online' : 'Bot offline'}
-                {isFetching && !isLoading ? <span className="text-slate-400">· syncing</span> : null}
-              </div>
             </div>
           </div>
           <div className="flex items-center gap-1">

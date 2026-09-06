@@ -81,6 +81,8 @@ export interface UserProfile {
   studentId: string;
   classLevel: string;
   track: string;
+  telegramAccount: string;
+  telegramUserId?: number;
   avatarColor: string;
   photoUrl?: string | null;
   theme: 'light' | 'dark' | 'system';

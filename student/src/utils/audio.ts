@@ -1,4 +1,4 @@
-// Web Audio API Sound Synthesizer for TestSpace
+// Web Audio API Sound Synthesizer for Quiz Bot
 class SoundManager {
   private ctx: AudioContext | null = null;
 
