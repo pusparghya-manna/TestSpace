@@ -1,6 +1,6 @@
 /**
  * Image storage & crop pipeline for Appwrite.
- * Prefer Appwrite Storage; optional sharp for crops when available.
+ * Prefer pure-JS (jimp) because Appwrite blocks sharp install-scripts.
  */
 
 const endpoint = () => (process.env.APPWRITE_ENDPOINT || 'https://sgp.cloud.appwrite.io/v1').replace(/\/$/, '');
@@ -30,7 +30,14 @@ export function normalizeBBox(bbox, imgWidth, imgHeight) {
   width = Number(width);
   height = Number(height);
   if (width <= 0 || height <= 0) return null;
-  const maxV = Math.max(Math.abs(x), Math.abs(y), Math.abs(width), Math.abs(height), Math.abs(x + width), Math.abs(y + height));
+  const maxV = Math.max(
+    Math.abs(x),
+    Math.abs(y),
+    Math.abs(width),
+    Math.abs(height),
+    Math.abs(x + width),
+    Math.abs(y + height)
+  );
   if (maxV <= 1.0001) {
     x *= imgWidth;
     y *= imgHeight;
@@ -61,7 +68,6 @@ export function normalizeBBox(bbox, imgWidth, imgHeight) {
   if (w < 12 || h < 12) return null;
   if (w > imgWidth * 0.96 && h > imgHeight * 0.85) return null;
   if (w > imgWidth * 0.35 && h < imgHeight * 0.06) return null;
-  // padding
   const pad = 4;
   left = Math.max(0, left - pad);
   top = Math.max(0, top - pad);
@@ -101,18 +107,26 @@ export async function getStorageFileBuffer(fileId) {
   return Buffer.from(ab);
 }
 
-export async function cropWithSharp(pageBuffer, bbox) {
-  let sharp;
+async function cropBuffer(pageBuffer, bbox) {
+  // 1) jimp (pure JS — no install scripts)
   try {
-    sharp = (await import('sharp')).default;
-  } catch {
-    return null;
-  }
-  try {
-    const meta = await sharp(pageBuffer).metadata();
-    const imgW = meta.width || 0;
-    const imgH = meta.height || 0;
+    const { Jimp } = await import('jimp');
+    const image = await Jimp.read(pageBuffer);
+    const imgW = image.bitmap.width;
+    const imgH = image.bitmap.height;
     const box = normalizeBBox(bbox, imgW, imgH);
+    if (!box) return null;
+    const cropped = image.crop({ x: box.left, y: box.top, w: box.width, h: box.height });
+    const out = await cropped.getBuffer('image/jpeg');
+    return { buffer: out, mimeType: 'image/jpeg', width: box.width, height: box.height, engine: 'jimp' };
+  } catch (e) {
+    console.warn('[media] jimp crop failed', e?.message || e);
+  }
+  // 2) sharp if available
+  try {
+    const sharp = (await import('sharp')).default;
+    const meta = await sharp(pageBuffer).metadata();
+    const box = normalizeBBox(bbox, meta.width || 0, meta.height || 0);
     if (!box) return null;
     const out = await sharp(pageBuffer)
       .extract({ left: box.left, top: box.top, width: box.width, height: box.height })
@@ -123,21 +137,29 @@ export async function cropWithSharp(pageBuffer, bbox) {
       mimeType: 'image/jpeg',
       width: out.info.width,
       height: out.info.height,
+      engine: 'sharp',
     };
   } catch (e) {
-    console.warn('[media] crop failed', e?.message || e);
-    return null;
+    console.warn('[media] sharp crop failed', e?.message || e);
   }
+  return null;
 }
 
+/**
+ * Process OCR questions with diagram bboxes.
+ * Returns questions with image.fileId when crop succeeded.
+ * Sets cropStatus: 'ok' | 'unavailable' | 'skipped' — never pretends success.
+ */
 export async function processOcrCrops(pageBase64, questions) {
   const pageBuffer = Buffer.from(pageBase64, 'base64');
   const imageErrors = [];
   const seen = new Set();
+  let engine = null;
   for (const q of questions || []) {
     if (!q.has_image || !q.image_bbox) {
       q.has_image = false;
       q.image_bbox = null;
+      q.cropStatus = 'skipped';
       continue;
     }
     const key = JSON.stringify(q.image_bbox);
@@ -145,25 +167,38 @@ export async function processOcrCrops(pageBase64, questions) {
       imageErrors.push('duplicate diagram bbox — text-only');
       q.has_image = false;
       q.image_bbox = null;
+      q.cropStatus = 'skipped';
       continue;
     }
     seen.add(key);
-    const cropped = await cropWithSharp(pageBuffer, q.image_bbox);
+    const cropped = await cropBuffer(pageBuffer, q.image_bbox);
     if (!cropped) {
-      // fallback: attach full page reference later if pageFileId provided
-      q.image = q.image || null;
-      imageErrors.push('crop unavailable — diagram flag kept without crop');
+      q.cropStatus = 'unavailable';
+      imageErrors.push('crop unavailable — diagram flag kept without fileId');
+      // Do NOT invent a fileId
       continue;
     }
-    const uploaded = await uploadBase64ToStorage(cropped.buffer.toString('base64'), cropped.mimeType, `crop_${Date.now()}.jpg`);
-    q.image = {
-      fileId: uploaded.fileId,
-      mimeType: cropped.mimeType,
-      width: cropped.width,
-      height: cropped.height,
-      storage: 'appwrite',
-    };
-    q.imageFileId = uploaded.fileId;
+    engine = cropped.engine;
+    try {
+      const uploaded = await uploadBase64ToStorage(
+        cropped.buffer.toString('base64'),
+        cropped.mimeType,
+        `crop_${Date.now()}.jpg`
+      );
+      q.image = {
+        fileId: uploaded.fileId,
+        mimeType: cropped.mimeType,
+        width: cropped.width,
+        height: cropped.height,
+        storage: 'appwrite',
+        engine: cropped.engine,
+      };
+      q.imageFileId = uploaded.fileId;
+      q.cropStatus = 'ok';
+    } catch (e) {
+      q.cropStatus = 'unavailable';
+      imageErrors.push(`storage upload failed: ${e?.message || e}`);
+    }
   }
-  return { questions, imageErrors };
+  return { questions, imageErrors, cropEngine: engine || null };
 }

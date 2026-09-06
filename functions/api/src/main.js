@@ -13,7 +13,17 @@ import { ownsExam, ownsQuestion, ownsStudent, ownsAttempt, teacherIdOf, notFound
 import { uploadBase64ToStorage, processOcrCrops, getStorageFileBuffer } from './services/media.js';
 
 function json(res, status, body, req) {
-  return res.json(body, status, corsHeaders(req || {}));
+  try {
+    const headers = corsHeaders(req || {});
+    // Appwrite Functions: res.json(data, statusCode, headers)
+    return res.json(body, status, headers);
+  } catch (e) {
+    try {
+      return res.json(body || { error: 'INTERNAL' }, status || 500);
+    } catch {
+      return res.text(JSON.stringify(body || { error: 'INTERNAL' }), status || 500);
+    }
+  }
 }
 
 function parseBody(req) {
@@ -22,16 +32,10 @@ function parseBody(req) {
   try { return JSON.parse(req.body); } catch { return {}; }
 }
 
-function requireTeacher(req, res) {
+function requireTeacher(req) {
   try {
-    const t = teacherFromHeaders(req.headers || {});
-    if (!t) {
-      json(res, 401, { error: 'Unauthorized' }, req);
-      return null;
-    }
-    return t;
-  } catch (e) {
-    json(res, 401, { error: 'Unauthorized' }, req);
+    return teacherFromHeaders(req.headers || {}) || null;
+  } catch {
     return null;
   }
 }
@@ -61,7 +65,7 @@ async function finalizeExpiredAttempt(attempt) {
   return attempt;
 }
 
-function authWebapp(req, res) {
+function authWebapp(req) {
   const headers = req.headers || {};
   const body = parseBody(req);
   const initData =
@@ -71,20 +75,39 @@ function authWebapp(req, res) {
     body.tgWebAppData ||
     '';
   const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
-  if (!botToken) {
-    json(res, 503, { error: 'TELEGRAM_BOT_TOKEN not configured' }, req);
-    return null;
-  }
+  if (!botToken) return { __err: 503, error: 'TELEGRAM_BOT_TOKEN not configured' };
   const auth = validateTelegramWebAppData(String(initData), botToken);
-  if (!auth) {
-    json(res, 401, { error: 'Invalid Telegram WebApp auth' }, req);
-    return null;
-  }
+  if (!auth) return { __err: 401, error: 'UNAUTHORIZED' };
   return auth;
 }
 
 export default async ({ req, res, log, error }) => {
-  if (req.method === 'OPTIONS') return json(res, 204, {});
+  // Appwrite scheduled execution (every 2 min) — run expiry + broadcast sweep
+  const trigger = String(
+    req.headers?.['x-appwrite-trigger'] ||
+    req.headers?.['X-Appwrite-Trigger'] ||
+    ''
+  ).toLowerCase();
+  if (trigger === 'schedule' || trigger === 'timer') {
+    try {
+      let finalized = 0;
+      const attempts = await store.getAttempts();
+      for (const a of attempts) {
+        if (a.status === 'IN_PROGRESS' && secondsLeft(a) <= 0) {
+          await finalizeExpiredAttempt(a);
+          finalized++;
+        }
+      }
+      const broadcasts = await processBroadcastJobs(store, 10);
+      log(`schedule sweep finalized=${finalized} broadcasts=${broadcasts}`);
+      return json(res, 200, { ok: true, source: 'schedule', finalized, broadcasts });
+    } catch (e) {
+      error(String(e?.message || e));
+      return json(res, 500, { error: 'schedule sweep failed' });
+    }
+  }
+
+  if ((req.method || '').toUpperCase() === 'OPTIONS') return res.empty();
 
   const method = (req.method || 'GET').toUpperCase();
   let path = req.path || '/';
@@ -122,7 +145,7 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, {
         ok: true,
         service: 'testspace-api',
-        version: '4.0.0',
+        version: '4.1.0',
         features: ['auth', 'exams', 'questions', 'students', 'results', 'ocr', 'webapp', 'telegram'],
         ocrConfigured: !!process.env.GEMINI_API_KEY,
         telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
@@ -168,8 +191,8 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- DASHBOARD DATA ----------
     if (path === '/api/data' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const [exams, students, attempts, settings] = await Promise.all([
         store.getExams(),
         store.getStudents(),
@@ -192,8 +215,8 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/dashboard/summary' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const exams = (await store.getExams()).filter((e) => e.teacherId === t.username);
       const attempts = await store.getAttempts();
       const myIds = new Set(exams.map((e) => e.id));
@@ -209,36 +232,42 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/stats' && method === 'GET') {
-      const exams = await store.getExams();
-      const students = await store.getStudents();
-      const attempts = await store.getAttempts();
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+      const exams = (await store.getExams()).filter((e) => e.teacherId === t.username);
+      const students = (await store.getStudents()).filter(
+        (s) => Array.isArray(s.teacherIds) && s.teacherIds.includes(t.username)
+      );
+      const ids = new Set(exams.map((e) => e.id));
+      const attempts = (await store.getAttempts()).filter((a) => ids.has(a.examId));
       return json(res, 200, {
         exams: exams.length,
         students: students.length,
         attempts: attempts.length,
-      });
+      }, req);
     }
 
     // ---------- EXAMS ----------
     if (path === '/api/exams' && method === 'GET') {
-      const t = teacherFromHeaders(req.headers || {});
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
       let exams = await store.getExams();
-      if (t) exams = exams.filter((e) => e.teacherId === t.username);
-      return json(res, 200, { exams: exams.map(withEffectiveStatus) });
+      exams = exams.filter((e) => e.teacherId === t.username);
+      return json(res, 200, { exams: exams.map(withEffectiveStatus) }, req);
     }
 
     {
       const m = match(path, '/api/exams/:id');
       if (m && method === 'GET') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const exam = await store.getExamById(m.id);
         if (!exam || !ownsExam(exam, t)) return json(res, 404, { error: 'Not found' }, req);
         return json(res, 200, withEffectiveStatus(exam));
       }
       if (m && method === 'PUT') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const exam = await store.getExamById(m.id);
         if (!exam) return json(res, 404, { error: 'Exam not found' });
         if (exam.teacherId && exam.teacherId !== t.username) return json(res, 403, { error: 'Not your exam' });
@@ -256,8 +285,8 @@ export default async ({ req, res, log, error }) => {
         return json(res, 200, withEffectiveStatus(updated));
       }
       if (m && method === 'DELETE') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const exam = await store.getExamById(m.id);
         if (!exam) return json(res, 404, { error: 'Exam not found' });
         if (exam.teacherId && exam.teacherId !== t.username) return json(res, 403, { error: 'Not your exam' });
@@ -268,8 +297,8 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/exams' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const exam = body.exam || body;
       if (!exam.title) return json(res, 400, { error: 'title required' });
       exam.id = exam.id || ID.unique();
@@ -295,8 +324,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/exams/:id/recalculate');
       if (m && method === 'POST') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const exam = await store.getExamById(m.id);
         if (!exam) return json(res, 404, { error: 'Exam not found' });
         const attempts = await store.getAttempts(exam.id);
@@ -316,8 +345,8 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, { questions: qs });
     }
     if (path === '/api/questions' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const q = body.question || body;
       q.id = q.id || ID.unique();
       q.teacherId = t.username;
@@ -327,8 +356,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/questions/:id');
       if (m && method === 'PUT') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const existing = await store.getQuestions().then((qs) => qs.find((x) => x.id === m.id));
         if (!existing) return json(res, 404, { error: 'Not found' });
         const q = { ...existing, ...body, id: m.id };
@@ -336,15 +365,15 @@ export default async ({ req, res, log, error }) => {
         return json(res, 200, { question: q });
       }
       if (m && method === 'DELETE') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         await store.deleteQuestion(m.id);
         return json(res, 200, { success: true });
       }
     }
     if (path === '/api/questions/import-json' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const list = Array.isArray(body.questions) ? body.questions : [];
       const saved = [];
       for (const raw of list) {
@@ -366,8 +395,8 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- OCR ----------
     if (path === '/api/ocr/parse' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let fileBase64 = String(body.fileBase64 || body.image || body.base64 || '');
       if (fileBase64.includes(',')) fileBase64 = fileBase64.split(',').pop() || '';
       if (!fileBase64) return json(res, 400, { error: 'fileBase64 required' });
@@ -379,8 +408,8 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, result);
     }
     if (path === '/api/ocr/upload-image' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       if (!rateLimit(`ocr-up:${t.username}`, 20, 60_000)) return json(res, 429, { error: 'Too many uploads' }, req);
       let fileBase64 = String(body.fileBase64 || body.image || body.base64 || '');
       if (fileBase64.includes(',')) fileBase64 = fileBase64.split(',').pop() || '';
@@ -396,8 +425,8 @@ export default async ({ req, res, log, error }) => {
       }
     }
     if (path === '/api/ocr/commit-crops' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let pageBase64 = String(body.fileBase64 || body.pageBase64 || body.image || '');
       if (pageBase64.includes(',')) pageBase64 = pageBase64.split(',').pop() || '';
       const questions = Array.isArray(body.questions) ? body.questions : [];
@@ -412,16 +441,16 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- STUDENTS ----------
     if (path === '/api/students' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const students = (await store.getStudents()).filter(
         (s) => Array.isArray(s.teacherIds) && s.teacherIds.includes(t.username)
       );
       return json(res, 200, { students }, req);
     }
     if (path === '/api/students' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const student = body.student || body;
       student.id = student.id || ID.unique();
       student.teacherIds = Array.from(new Set([...(student.teacherIds || []), t.username]));
@@ -431,8 +460,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/students/:id');
       if (m && method === 'PUT') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const existing = await store.getStudentById(m.id);
         if (!existing || !ownsStudent(existing, t)) return json(res, 404, { error: 'Not found' }, req);
         const student = { ...existing, ...body, id: m.id, teacherIds: existing.teacherIds };
@@ -440,8 +469,8 @@ export default async ({ req, res, log, error }) => {
         return json(res, 200, { student }, req);
       }
       if (m && method === 'DELETE') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         await store.deleteStudent(m.id);
         return json(res, 200, { success: true });
       }
@@ -449,8 +478,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/students/:id/reset-attempt');
       if (m && method === 'POST') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const examId = body.examId;
         const student = await store.getStudentById(m.id);
         if (!student || !ownsStudent(student, t)) return json(res, 404, { error: 'Not found' }, req);
@@ -466,8 +495,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/attempts/:id');
       if (m && method === 'DELETE') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const attempts = await store.getAttempts();
         const attempt = attempts.find((a) => a.id === m.id);
         const exam = attempt ? await store.getExamById(attempt.examId) : null;
@@ -479,8 +508,8 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/attempts/:id/detail');
       if (m && method === 'GET') {
-        const t = requireTeacher(req, res);
-        if (!t) return;
+        const t = requireTeacher(req);
+        if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
         const attempts = await store.getAttempts();
         const attempt = attempts.find((a) => a.id === m.id);
         const exam = attempt ? await store.getExamById(attempt.examId) : null;
@@ -503,8 +532,8 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/results/export' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const myExams = (await store.getExams()).filter((e) => e.teacherId === t.username);
       const ids = new Set(myExams.map((e) => e.id));
       const attempts = (await store.getAttempts()).filter((a) => ids.has(a.examId));
@@ -517,8 +546,8 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/leaderboard' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const myExams = (await store.getExams()).filter((e) => e.teacherId === t.username);
       const ids = new Set(myExams.map((e) => e.id));
       const attempts = (await store.getAttempts()).filter((a) => ids.has(a.examId) && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED') && a.isOfficial !== false);
@@ -529,19 +558,19 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- SETTINGS / MESSAGING ----------
     if (path === '/api/settings' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       return json(res, 200, await store.getSettings(), req);
     }
     if ((path === '/api/settings' && (method === 'PUT' || method === 'POST'))) {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const s = await store.updateSettings(body);
       return json(res, 200, s);
     }
     if (path === '/api/message' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const chatId = body.telegramUserId;
       const message = body.message;
       if (!chatId || !message) return json(res, 400, { error: 'telegramUserId and message required' });
@@ -549,8 +578,8 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, { ok: !!result.ok, result });
     }
     if (path === '/api/broadcast' && method === 'POST') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const message = body.message;
       if (!message) return json(res, 400, { error: 'message required' });
       const students = (await store.getStudents()).filter((s) => s.telegramUserId);
@@ -563,8 +592,8 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, { ok: true, sent, total: students.length });
     }
     if (path === '/api/audit-logs' && method === 'GET') {
-      const t = requireTeacher(req, res);
-      if (!t) return;
+      const t = requireTeacher(req);
+      if (!t) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       return json(res, 200, { logs: await store.getAuditLogs() });
     }
 
@@ -589,8 +618,9 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- WEBAPP (student mini-app) ----------
     if (path === '/api/webapp/session' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let student = await store.getStudentByTelegramId(auth.userId);
       if (!student) {
         student = {
@@ -635,8 +665,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/profile' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let student = await store.getStudentByTelegramId(auth.userId);
       if (!student) return json(res, 404, { error: 'Student not found' });
       if (body.name) student.name = String(body.name).trim();
@@ -647,8 +678,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/exams' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const exams = (await store.getExams())
         .map(withEffectiveStatus)
         .filter((e) => e.status !== 'DRAFT' && e.status !== 'CANCELLED')
@@ -667,8 +699,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/exam' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let exam = await store.getExamById(body.examId);
       if (!exam) return json(res, 404, { error: 'Exam not found' });
       exam = await hydrateExamQuestions(exam);
@@ -679,8 +712,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/start' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let exam = await store.getExamById(body.examId);
       if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
       exam = await hydrateExamQuestions(exam);
@@ -738,8 +772,8 @@ export default async ({ req, res, log, error }) => {
         expiresAt: endsAt,
         durationMinutes,
         attemptNumber: await store.nextAttemptNumber(exam.id, auth.userId),
-        practice: !!body.practice || !!body.forceNew,
-        isOfficial: !body.practice && !body.forceNew,
+        practice: !!body.practice,
+        isOfficial: !body.practice,
         pausedAt: null,
         pausedSeconds: 0,
       };
@@ -753,8 +787,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/pause' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' }, req);
       if (attempt.status !== 'IN_PROGRESS') return json(res, 400, { error: 'Attempt not in progress' }, req);
@@ -791,8 +826,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/sync' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) {
         return json(res, 404, { error: 'Attempt not found' });
@@ -826,8 +862,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/answer' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
       if (attempt.status !== 'IN_PROGRESS') return json(res, 400, { error: 'Attempt not in progress' });
@@ -836,15 +873,17 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/index' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       await store.updateAttemptIndex(body.attemptId, body.index);
       return json(res, 200, { ok: true });
     }
 
     if (path === '/api/webapp/submit' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       let attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) {
         return json(res, 404, { error: 'Attempt not found' });
@@ -909,8 +948,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/results' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const attempts = (await store.getAttempts()).filter(
         (a) => Number(a.telegramUserId) === auth.userId && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED')
       );
@@ -932,8 +972,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/review' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
       if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
       if (attempt.status !== 'SUBMITTED' && attempt.status !== 'AUTO_SUBMITTED') return json(res, 400, { error: 'Exam not submitted' });
@@ -963,8 +1004,9 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/webapp/leaderboard' && method === 'POST') {
-      const auth = authWebapp(req, res);
-      if (!auth) return;
+      const auth = authWebapp(req);
+      if (auth?.__err) return json(res, auth.__err, { error: auth.error }, req);
+      if (!auth) return json(res, 401, { error: "UNAUTHORIZED" }, req);
       const examId = body.examId;
       let attempts = (await store.getAttempts()).filter((a) => a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED');
       if (examId) attempts = attempts.filter((a) => a.examId === examId);
