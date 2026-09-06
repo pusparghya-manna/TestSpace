@@ -16,9 +16,9 @@ export function StudentAuthGate({ onAuthed }: { onAuthed: () => void }) {
     try {
       const out =
         mode === 'login'
-          ? await authApi.login({ email, password })
-          : await authApi.register({ email, password, name });
-      setToken(out.token);
+          ? await authApi.login({ email: email.trim(), password })
+          : await authApi.register({ email: email.trim(), password, name: name.trim() || undefined });
+      setToken(out.token, true);
       onAuthed();
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
@@ -28,36 +28,46 @@ export function StudentAuthGate({ onAuthed }: { onAuthed: () => void }) {
   };
 
   return (
-    <div className="min-h-screen liquid-canvas-bg flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="liquid-orb liquid-orb-1" />
-      <div className="liquid-orb liquid-orb-2" />
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        background:
+          'linear-gradient(135deg, #e0f2fe 0%, #f8fafc 40%, #f3e8ff 100%)',
+      }}
+    >
       <form
         onSubmit={submit}
-        className="text-center space-y-4 relative z-10 glass-card p-8 rounded-3xl max-w-sm w-full"
+        className="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 space-y-4 text-center border border-slate-100"
       >
         <img
           src={`${import.meta.env.BASE_URL}logo.png`}
           alt="TestSpace"
-          className="protected-logo w-16 h-16 rounded-2xl object-cover bg-white mx-auto shadow-lg shadow-blue-500/15"
-          width="64"
-          height="64"
+          className="w-16 h-16 rounded-2xl object-contain bg-white mx-auto"
+          width={64}
+          height={64}
           onError={(e) => {
-            (e.target as HTMLImageElement).src = `${import.meta.env.BASE_URL}exam-bot-logo.png`;
+            const el = e.target as HTMLImageElement;
+            if (!el.dataset.fallback) {
+              el.dataset.fallback = '1';
+              el.src = `${import.meta.env.BASE_URL}exam-bot-logo.png`;
+            }
           }}
         />
-        <h1 className="text-lg font-bold text-slate-900">TestSpace Student</h1>
-        <p className="text-sm text-slate-500">Sign in to take exams in your browser</p>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">TestSpace Student</h1>
+          <p className="text-sm text-slate-500 mt-1">Sign in to take exams in your browser</p>
+        </div>
         <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1 text-sm">
           <button
             type="button"
-            className={`rounded-lg py-1.5 ${mode === 'login' ? 'bg-white shadow font-semibold' : ''}`}
+            className={`rounded-lg py-2 ${mode === 'login' ? 'bg-white shadow font-semibold' : 'text-slate-600'}`}
             onClick={() => setMode('login')}
           >
             Login
           </button>
           <button
             type="button"
-            className={`rounded-lg py-1.5 ${mode === 'register' ? 'bg-white shadow font-semibold' : ''}`}
+            className={`rounded-lg py-2 ${mode === 'register' ? 'bg-white shadow font-semibold' : 'text-slate-600'}`}
             onClick={() => setMode('register')}
           >
             Register
@@ -65,34 +75,39 @@ export function StudentAuthGate({ onAuthed }: { onAuthed: () => void }) {
         </div>
         {mode === 'register' && (
           <input
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-left text-sm"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-left text-sm"
             placeholder="Full name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
           />
         )}
         <input
-          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-left text-sm"
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-left text-sm"
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          autoComplete="email"
         />
         <input
-          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-left text-sm"
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-left text-sm"
           type="password"
           placeholder="Password (min 8)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
         />
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && (
+          <p className="text-red-600 text-sm text-left bg-red-50 rounded-lg px-3 py-2">{error}</p>
+        )}
         <button
           type="submit"
           disabled={busy}
-          className="w-full bg-blue-600 text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
         >
           {busy ? 'Please wait…' : mode === 'login' ? 'Login' : 'Create account'}
         </button>

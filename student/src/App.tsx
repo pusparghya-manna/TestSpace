@@ -359,7 +359,12 @@ export default function App() {
           }
         }
       } catch (err: any) {
-        if (!cancelled) setLoadError(err?.message || 'Failed to load session');
+        if (!cancelled) {
+          // Stale/invalid JWT often looks like a blank shell — force re-auth
+          clearToken();
+          setInTelegram(false);
+          setLoadError(err?.message || 'Session expired. Please sign in again.');
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
