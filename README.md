@@ -1,5 +1,21 @@
 # TestSpace
 
+Appwrite-hosted exam platform (dashboard + Mini App + API).
+
+## Source layout
+
+| Path | Role |
+|------|------|
+| `frontend/` | Teacher dashboard (Appwrite Site) |
+| `webapp/` | Student Telegram Mini App (Appwrite Site) |
+| `functions/api/src/` | **Full backend** (same structure as `backend/src`) |
+| `functions/api/runtime/` | **Deployed** TablesDB API entry |
+| `backend/` | Original backend (kept in sync with `functions/api/src`) |
+
+Live API: https://testspace-api.appwrite.network
+
+# TestSpace
+
 Telegram exam platform for teachers and students — hosted entirely on **Appwrite Cloud**.
 
 ## Architecture

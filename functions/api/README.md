@@ -1,12 +1,31 @@
-# TestSpace API (Appwrite Function)
+# TestSpace API — Appwrite Function
 
-Node 22 HTTP function. Entry: `src/main.js`.
+## Directory layout (mirrors `backend/`)
 
-Modules:
-- `store.js` — Appwrite TablesDB entity store (`exam`, `question`, `student`, `attempt`, `teacher`, …)
-- `auth.js` — bcrypt + JWT teachers
-- `scoring.js` — marking + exam window status
-- `ocr.js` — Gemini structured OCR
-- `telegram.js` / `webappAuth.js` — bot + Mini App
+```
+functions/api/
+├── src/                    # Full backend TypeScript (same modules as backend/src)
+│   ├── api/                # server.ts, webappRoutes.ts, middleware/
+│   ├── services/           # geminiOcr.ts (full prompts), scoring, media
+│   ├── telegram/           # bot, polling, webappAuth, …
+│   ├── repositories/
+│   ├── database/           # Appwrite Databases document client
+│   ├── store.ts, auth.ts, config/, jobs/, cache/, types/, utils/
+│   └── …
+├── runtime/                # Live production entry (TablesDB HTTP API)
+│   ├── main.js             # Deployed entrypoint
+│   ├── store.js, auth.js, scoring.js, ocr.js, telegram.js, webappAuth.js
+│   └── package.json
+└── README.md
+```
 
-All routes are path-matched in `main.js` (no Express). CORS is open for dashboard + webapp origins.
+### Live deployment
+
+- **Entrypoint:** `runtime/main.js`
+- **Storage:** Appwrite TablesDB (`entity` / `record_id` / `payload`)
+- **Features:** teacher auth, exams, questions, OCR, students, results, full webapp lifecycle, Telegram webhook
+
+### Full Express (`src/`)
+
+Identical to `backend/src`. Deploying it requires API key scopes for **Databases collections**.  
+Until those scopes exist on the project key, production uses `runtime/`.

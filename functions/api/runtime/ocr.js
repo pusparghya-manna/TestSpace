@@ -49,7 +49,33 @@ export async function parseQuestionsFromMedia(fileBase64, mimeType) {
   ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i);
 
   const promptText = `Extract all multiple choice examination questions from this question paper document/image into structured JSON.
-Rules: preserve question and option text; answer is 0-based index (0=A,1=B,2=C,3=D); marks default 1; negativeMarks default 0; extract every question; has_image true only for real diagrams.`;
+
+CRITICAL RULES:
+1. Preserve the exact original question text cleanly.
+2. Preserve the exact original option text and order. Always extract options into an array of strings.
+3. "answer" must be a 0-based integer index corresponding to the correct option:
+   - 0 = Option A / First option
+   - 1 = Option B / Second option
+   - 2 = Option C / Third option
+   - 3 = Option D / Fourth option
+   - If the paper includes an answer key or marked answer, convert it to the matching index.
+   - If no key is printed, solve the question from the visible text when the answer is clear and academically unambiguous.
+4. Default "marks" to 1 unless explicitly specified otherwise.
+5. Default "negativeMarks" to 0 unless explicitly specified otherwise.
+6. Extract EVERY single question accurately without skipping.
+7. Don't include question numbers from the given image. 
+
+IMAGE / DIAGRAM DETECTION (per question — be careful):
+For every question, decide if it has a REAL drawn visual (diagram, figure, graph, chart, map, biological drawing, chemical structure, pedigree, Venn circles, labeled organ drawing).
+
+has_image / image_bbox rules:
+- NO visual → "has_image": false, "image_bbox": null.
+- HAS visual → "has_image": true AND a precise "image_bbox" for THAT question only.
+
+has_image only (bbox is optional and NOT used for final cropping):
+- Set has_image true when the question has a real diagram/figure.
+- You may omit image_bbox or set it null — a separate localization pass will crop diagrams.
+- Prefer correct has_image flags over imperfect boxes.`;
 
   let response = null;
   let lastErr = null;
