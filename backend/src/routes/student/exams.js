@@ -25,7 +25,14 @@ export async function handleStudentExams(method, path, body, req, res) {
   if (path === '/api/student/exams' && method === 'GET') {
     const s = studentFromHeaders(req.headers || {});
     if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    const student = await store.getStudentById(s.id);
+    const opened = new Set(Array.isArray(student?.openedExamIds) ? student.openedExamIds : []);
+    const attempts = await store.getAttempts();
+    for (const a of attempts) {
+      if (a.studentId === s.id && a.examId) opened.add(a.examId);
+    }
     const exams = (await store.getExams())
+      .filter((e) => opened.has(e.id))
       .filter((e) => e.status !== 'DRAFT' && e.status !== 'CANCELLED')
       .map(withEffectiveStatus)
       .map((e) => ({
@@ -37,8 +44,74 @@ export async function handleStudentExams(method, path, body, req, res) {
         status: e.status,
         startDate: e.startDate,
         resultVisibility: e.resultVisibility || 'PUBLISHED',
+        leaderboardVisibility: e.leaderboardVisibility || 'PUBLISHED',
       }));
     return json(res, 200, { exams }, req);
+  }
+
+  if ((path === '/api/student/open' || path === '/api/student/exam') && method === 'POST') {
+    const s = studentFromHeaders(req.headers || {});
+    if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    const examId = body.examId || body.id;
+    if (!examId) return json(res, 400, { error: 'examId required' }, req);
+    let exam = await hydrate(await store.getExamById(examId));
+    if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
+    if (exam.status === 'DRAFT' || exam.status === 'CANCELLED') {
+      return json(res, 403, { error: 'This exam is not available' }, req);
+    }
+    await store.grantExamAccess(s.id, exam.id);
+    exam = withEffectiveStatus(exam);
+    return json(res, 200, {
+      exam: {
+        id: exam.id,
+        title: exam.title,
+        subject: exam.subject || '',
+        durationMinutes: exam.durationMinutes || 60,
+        totalQuestions: (exam.questions || []).length || exam.totalQuestions || 0,
+        status: exam.status,
+        startDate: exam.startDate,
+        resultVisibility: exam.resultVisibility || 'PUBLISHED',
+        leaderboardVisibility: exam.leaderboardVisibility || 'PUBLISHED',
+        totalMarks: exam.totalMarks || 0,
+        className: exam.className || '',
+      },
+    }, req);
+  }
+
+  if (path === '/api/student/leaderboard' && method === 'POST') {
+    const s = studentFromHeaders(req.headers || {});
+    if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    const examId = body.examId;
+    if (!examId) return json(res, 400, { error: 'examId required' }, req);
+    const exam = await store.getExamById(examId);
+    if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
+    const student = await store.getStudentById(s.id);
+    const opened = new Set(Array.isArray(student?.openedExamIds) ? student.openedExamIds : []);
+    const attemptsAll = await store.getAttempts(examId);
+    if (!opened.has(examId) && !attemptsAll.some((a) => a.studentId === s.id)) {
+      return json(res, 403, { error: 'Open this exam from your teacher link first' }, req);
+    }
+    if (String(exam.leaderboardVisibility || 'PUBLISHED').toUpperCase() === 'HIDDEN') {
+      return json(res, 403, { error: 'Leaderboard is hidden' }, req);
+    }
+    const official = attemptsAll.filter(
+      (a) => !a.practice && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED')
+    );
+    official.sort((a, b) => {
+      const ps = (Number(b.percentage) || 0) - (Number(a.percentage) || 0);
+      if (ps) return ps;
+      return (Number(a.timeTakenSeconds) || 0) - (Number(b.timeTakenSeconds) || 0);
+    });
+    const rows = official.map((a, i) => ({
+      rank: i + 1,
+      name: a.studentName || 'Student',
+      score: a.score || 0,
+      maxScore: a.maxScore || 0,
+      percentage: a.percentage || 0,
+      timeTakenSeconds: a.timeTakenSeconds || 0,
+      isMe: a.studentId === s.id,
+    }));
+    return json(res, 200, { exam: { id: exam.id, title: exam.title }, rows }, req);
   }
 
   if (path === '/api/student/start' && method === 'POST') {
@@ -46,6 +119,10 @@ export async function handleStudentExams(method, path, body, req, res) {
     if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
     let exam = await hydrate(await store.getExamById(body.examId));
     if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
+    if (exam.status === 'DRAFT' || exam.status === 'CANCELLED') {
+      return json(res, 403, { error: 'This exam is not available' }, req);
+    }
+    await store.grantExamAccess(s.id, exam.id);
     const questions = publicQuestions(exam);
     if (!questions.length) return json(res, 400, { error: 'Exam has no questions' }, req);
     const student = (await store.getStudentById(s.id)) || { id: s.id, name: s.name, email: s.email };

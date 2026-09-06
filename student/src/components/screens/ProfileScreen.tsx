@@ -130,15 +130,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateN
 
           <div className="grid grid-cols-1 gap-2">
             <div className="p-3 rounded-2xl glass-pill flex items-center gap-3">
-              <Hash className="w-4 h-4 text-blue-600 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Student ID</span>
-                <span className="text-sm font-bold text-slate-900 font-mono truncate block">
-                  {profile.studentId || '—'}
-                </span>
-              </div>
-            </div>
-            <div className="p-3 rounded-2xl glass-pill flex items-center gap-3">
               <Send className="w-4 h-4 text-blue-600 shrink-0" />
               <div className="min-w-0">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Account</span>

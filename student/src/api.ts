@@ -249,12 +249,11 @@ export const webappApi = {
 
   exams: () => get<{ exams: ApiExamSummary[] }>('/api/student/exams'),
 
-  examDetail: async (examId: string) => {
-    const { exams } = await get<{ exams: ApiExamSummary[] }>('/api/student/exams');
-    const exam = exams.find((e) => e.id === examId);
-    if (!exam) throw new Error('Exam not found');
-    return { exam };
-  },
+  examDetail: (examId: string) =>
+    post<{ exam: ApiExamSummary }>('/api/student/exam', { examId }),
+
+  openExam: (examId: string) =>
+    post<{ exam: ApiExamSummary }>('/api/student/open', { examId }),
 
   startExam: (examId: string, forceNew?: boolean) =>
     apiWithRetry<{

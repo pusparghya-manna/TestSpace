@@ -336,6 +336,9 @@ export default function App() {
             }
           }
           if (linkedExam && !cancelled) {
+            setAvailableExams((prev) =>
+              prev.some((e) => e.id === linkedExam!.id) ? prev : [linkedExam!, ...prev]
+            );
             setSelectedExam(linkedExam);
             setCurrentTab('details');
           }

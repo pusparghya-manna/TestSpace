@@ -137,6 +137,21 @@ export const store = {
   async deleteStudent(id) {
     return deleteEntity('student', id);
   },
+  async grantExamAccess(studentId, examId) {
+    const s = await getEntity('student', studentId);
+    if (!s) return null;
+    const ids = Array.isArray(s.openedExamIds) ? s.openedExamIds.slice() : [];
+    if (examId && !ids.includes(examId)) ids.push(examId);
+    s.openedExamIds = ids;
+    await upsertEntity('student', studentId, s);
+    return s;
+  },
+  async getOpenedExamIds(studentId) {
+    const s = await getEntity('student', studentId);
+    const ids = Array.isArray(s?.openedExamIds) ? s.openedExamIds : [];
+    return ids;
+  },
+
   async linkStudentTeacher(studentId, teacherId) {
     const s = await getEntity('student', studentId);
     if (!s) return null;
