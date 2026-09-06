@@ -14,9 +14,6 @@ export function getJwtSecret() {
 export function assertProductionSecrets() {
   if (!isProd()) return;
   getJwtSecret();
-  if (!String(process.env.TELEGRAM_BOT_TOKEN || '').trim()) {
-    throw new Error('TELEGRAM_BOT_TOKEN is required in production');
-  }
   if (!String(process.env.APPWRITE_API_KEY || '').trim()) {
     throw new Error('APPWRITE_API_KEY is required in production');
   }
@@ -44,13 +41,12 @@ export function corsHeaders(req) {
     !origin ||
     list.includes(origin) ||
     /^https:\/\/[a-z0-9-]+\.appwrite\.network$/i.test(origin) ||
-    /^https:\/\/web\.telegram\.org$/i.test(origin) ||
     origin === 'null';
   const allowOrigin = origin && ok ? origin : list[0];
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers':
-      'Content-Type, Authorization, X-Telegram-Init-Data, X-Requested-With',
+      'Content-Type, Authorization, X-Requested-With',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',

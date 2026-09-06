@@ -243,13 +243,9 @@ export const store = {
       maintenanceMode: false,
       allowPractice: true,
       botActive: false,
-      botUsername: process.env.TELEGRAM_BOT_USERNAME
-        ? (process.env.TELEGRAM_BOT_USERNAME.startsWith('@')
-            ? process.env.TELEGRAM_BOT_USERNAME
-            : '@' + process.env.TELEGRAM_BOT_USERNAME)
-        : '@TestxSpace_bot',
+      botUsername: '',
       telegramBotToken: '',
-      webhookUrl: 'https://testspace-api.appwrite.network/api/telegram/webhook',
+      webhookUrl: '',
       autoPublishResults: true,
       systemNotice: '',
     };
