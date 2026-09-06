@@ -143,7 +143,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateN
               <div className="min-w-0">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Telegram</span>
                 <span className="text-sm font-bold text-slate-900 truncate block">
-                  {profile.telegramAccount || profile.track || '—'}
                 </span>
               </div>
             </div>
