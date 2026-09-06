@@ -534,6 +534,8 @@ export default function App() {
     }
   };
 
+  const isLiveExamDesk = currentTab === 'live';
+
   if (!inTelegram) {
     return (
       <StudentAuthGate
