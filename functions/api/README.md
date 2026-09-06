@@ -1,31 +1,22 @@
-# TestSpace API — Appwrite Function
+# TestSpace API — Appwrite Function (converted)
 
-## Directory layout (mirrors `backend/`)
+This is **not** a copy of Express `backend/`. It is an Appwrite Function:
+
+- Entry: `src/main.js` (`export default async ({ req, res, log, error })`)
+- Data: Appwrite TablesDB (`lib/store.js`)
+- Auth: JWT teachers + Telegram Mini App `initData`
+- Telegram: Bot HTTP API (`services/telegram.js`)
+- OCR: Gemini (`services/ocr.js`)
 
 ```
-functions/api/
-├── src/                    # Full backend TypeScript (same modules as backend/src)
-│   ├── api/                # server.ts, webappRoutes.ts, middleware/
-│   ├── services/           # geminiOcr.ts (full prompts), scoring, media
-│   ├── telegram/           # bot, polling, webappAuth, …
-│   ├── repositories/
-│   ├── database/           # Appwrite Databases document client
-│   ├── store.ts, auth.ts, config/, jobs/, cache/, types/, utils/
-│   └── …
-├── runtime/                # Live production entry (TablesDB HTTP API)
-│   ├── main.js             # Deployed entrypoint
-│   ├── store.js, auth.js, scoring.js, ocr.js, telegram.js, webappAuth.js
-│   └── package.json
-└── README.md
+src/
+  main.js                 # Appwrite router
+  lib/store.js            # TablesDB
+  lib/auth.js             # teacher JWT
+  lib/scoring.js
+  lib/webappAuth.js
+  services/ocr.js         # converted from services/geminiOcr.ts
+  services/telegram.js    # converted from telegram/bot.ts commands
 ```
 
-### Live deployment
-
-- **Entrypoint:** `runtime/main.js`
-- **Storage:** Appwrite TablesDB (`entity` / `record_id` / `payload`)
-- **Features:** teacher auth, exams, questions, OCR, students, results, full webapp lifecycle, Telegram webhook
-
-### Full Express (`src/`)
-
-Identical to `backend/src`. Deploying it requires API key scopes for **Databases collections**.  
-Until those scopes exist on the project key, production uses `runtime/`.
+`backend/` remains the original Express source for reference.
