@@ -46,7 +46,7 @@ const EMPTY_PROFILE: UserProfile = {
 function mapExam(e: ApiExamSummary): Exam {
   return {
     id: e.id,
-    title: e.title,
+    title: (e.title && String(e.title).trim()) || 'Untitled exam',
     subject: e.subject || '',
     className: e.className || '',
     totalQuestions: e.totalQuestions || 0,
@@ -122,7 +122,7 @@ function mapResult(
   return {
     id: r.id,
     examId: r.examId,
-    examTitle: r.examTitle || 'Exam',
+    examTitle: r.examTitle && String(r.examTitle) !== String(r.examId) ? r.examTitle : 'Exam',
     answers: { ...(r.answers || {}) },
     marked: {},
     visited: {},
@@ -205,7 +205,11 @@ export default function App() {
   const goTab = useCallback((tab: string, extra?: { examId?: string; attemptId?: string }) => {
     setCurrentTab(tab);
     const next = pathForTab(tab, extra);
-    if (window.location.pathname !== next) navigate(next);
+    if (window.location.pathname !== next) {
+      // Main tabs replace history so back isn't needed twice
+      const replace = ['home', 'exams', 'results', 'leaderboard', 'profile'].includes(tab);
+      navigate(next, { replace });
+    }
   }, [navigate]);
 
   useEffect(() => {
@@ -218,6 +222,56 @@ export default function App() {
       });
     }
   }, [location.pathname, availableExams]);
+
+  // Browser notifications from teacher broadcasts
+  useEffect(() => {
+    if (!inTelegram) return;
+    let cancelled = false;
+    let known = new Set<string>();
+    try {
+      const raw = sessionStorage.getItem('ts_known_notifs');
+      if (raw) known = new Set(JSON.parse(raw));
+    } catch {}
+
+    const requestPerm = async () => {
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+      } catch {}
+    };
+
+    const poll = async () => {
+      try {
+        const { notifications } = await webappApi.notifications();
+        if (cancelled) return;
+        const unread = (notifications || []).filter((n) => !n.read && !known.has(n.id));
+        for (const n of unread) {
+          known.add(n.id);
+          try {
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              new Notification('TestSpace', { body: n.message, icon: '/logo.svg' });
+            }
+          } catch {}
+        }
+        try {
+          sessionStorage.setItem('ts_known_notifs', JSON.stringify([...known].slice(-200)));
+        } catch {}
+        const ids = (notifications || []).filter((n) => !n.read).map((n) => n.id);
+        if (ids.length) await webappApi.markNotificationsRead(ids).catch(() => {});
+      } catch {
+        /* offline */
+      }
+    };
+
+    void requestPerm();
+    void poll();
+    const timer = window.setInterval(poll, 25000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [inTelegram]);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [notStartedAt, setNotStartedAt] = useState<string | null>(null);

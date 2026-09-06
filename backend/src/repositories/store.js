@@ -269,6 +269,8 @@ export const store = {
   async updateSettings(partial) {
     const cur = await this.getSettings();
     const next = { ...cur, ...partial, id: 'system' };
+    if ('maintenanceMode' in (partial || {})) next.maintenanceMode = !!partial.maintenanceMode;
+    if ('allowPractice' in (partial || {})) next.allowPractice = partial.allowPractice !== false;
     await upsertEntity('settings', 'system', next);
     return next;
   },
@@ -316,4 +318,45 @@ export const store = {
   async getMediaMeta(id) {
     return getEntity('media', id);
   },
+
+  async createStudentNotifications({ message, teacherId, studentIds }) {
+    const created = [];
+    const at = new Date().toISOString();
+    for (const studentId of studentIds || []) {
+      const id = ID.unique();
+      const row = {
+        id,
+        studentId,
+        teacherId: teacherId || null,
+        message: String(message || '').slice(0, 2000),
+        read: false,
+        createdAt: at,
+      };
+      await upsertEntity('notification', id, row);
+      created.push(row);
+    }
+    return created;
+  },
+  async getStudentNotifications(studentId, limit = 50) {
+    const all = await listEntity('notification', 500);
+    return all
+      .filter((n) => n.studentId === studentId)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, limit);
+  },
+  async markNotificationsRead(studentId, ids) {
+    const set = new Set(ids || []);
+    const all = await this.getStudentNotifications(studentId, 200);
+    for (const n of all) {
+      if (!set.size || set.has(n.id)) {
+        if (!n.read) {
+          n.read = true;
+          n.readAt = new Date().toISOString();
+          await upsertEntity('notification', n.id, n);
+        }
+      }
+    }
+    return true;
+  },
 };
+

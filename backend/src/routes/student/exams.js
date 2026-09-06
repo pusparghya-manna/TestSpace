@@ -117,6 +117,13 @@ export async function handleStudentExams(method, path, body, req, res) {
   if (path === '/api/student/start' && method === 'POST') {
     const s = studentFromHeaders(req.headers || {});
     if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    const settings = await store.getSettings();
+    if (settings.maintenanceMode && !body.practice) {
+      return json(res, 503, { error: 'Platform is under maintenance. Please try again later.' }, req);
+    }
+    if (body.practice && settings.allowPractice === false) {
+      return json(res, 403, { error: 'Practice attempts are disabled' }, req);
+    }
     let exam = await hydrate(await store.getExamById(body.examId));
     if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
     if (exam.status === 'DRAFT' || exam.status === 'CANCELLED') {
@@ -143,6 +150,7 @@ export async function handleStudentExams(method, path, body, req, res) {
     const attempt = {
       id: ID.unique(),
       examId: exam.id,
+      examTitle: exam.title || 'Exam',
       studentId: student.id,
       studentName: student.name,
       studentEmail: student.email,
@@ -240,10 +248,38 @@ export async function handleStudentExams(method, path, body, req, res) {
   if (path === '/api/student/results' && method === 'GET') {
     const s = studentFromHeaders(req.headers || {});
     if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
-    const attempts = (await store.getAttempts()).filter(
-      (a) => a.studentId === s.id && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED')
-    );
+    const exams = await store.getExams();
+    const titleById = Object.fromEntries(exams.map((e) => [e.id, e.title || 'Exam']));
+    const attempts = (await store.getAttempts())
+      .filter((a) => a.studentId === s.id && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED'))
+      .map((a) => ({
+        ...a,
+        examTitle: a.examTitle || titleById[a.examId] || 'Exam',
+      }));
     return json(res, 200, { attempts }, req);
+  }
+
+  if (path === '/api/student/notifications' && method === 'GET') {
+    const s = studentFromHeaders(req.headers || {});
+    if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    const notifications = await store.getStudentNotifications(s.id);
+    return json(res, 200, { notifications }, req);
+  }
+
+  if (path === '/api/student/notifications/read' && method === 'POST') {
+    const s = studentFromHeaders(req.headers || {});
+    if (!s) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
+    await store.markNotificationsRead(s.id, body.ids || []);
+    return json(res, 200, { ok: true }, req);
+  }
+
+  if (path === '/api/student/settings' && method === 'GET') {
+    const settings = await store.getSettings();
+    return json(res, 200, {
+      maintenanceMode: !!settings.maintenanceMode,
+      allowPractice: settings.allowPractice !== false,
+      systemNotice: settings.systemNotice || '',
+    }, req);
   }
 
   if (path === '/api/student/review' && method === 'POST') {

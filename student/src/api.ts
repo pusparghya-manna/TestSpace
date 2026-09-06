@@ -329,7 +329,10 @@ export const webappApi = {
     return {
       results: (data.attempts || []).map((a) => ({
         ...a,
-        examTitle: a.examTitle || a.examId,
+        examTitle:
+          a.examTitle && String(a.examTitle) !== String(a.examId)
+            ? a.examTitle
+            : a.examTitle || 'Exam',
       })),
     };
   },
@@ -354,4 +357,17 @@ export const webappApi = {
         isMe: boolean;
       }>;
     }>('/api/student/leaderboard', { examId }),
+
+  notifications: () =>
+    get<{ notifications: Array<{ id: string; message: string; read?: boolean; createdAt?: string }> }>(
+      '/api/student/notifications'
+    ),
+
+  markNotificationsRead: (ids: string[] = []) =>
+    post<{ ok: boolean }>('/api/student/notifications/read', { ids }),
+
+  publicSettings: () =>
+    get<{ maintenanceMode: boolean; allowPractice: boolean; systemNotice: string }>(
+      '/api/student/settings'
+    ),
 };
