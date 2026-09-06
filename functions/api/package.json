@@ -1,12 +1,13 @@
 {
   "name": "testspace-api",
-  "version": "3.2.0",
+  "version": "4.0.0",
   "type": "module",
   "main": "src/main.js",
   "dependencies": {
     "@google/genai": "^2.4.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "node-appwrite": "^29.0.0"
+    "node-appwrite": "^29.0.0",
+    "sharp": "^0.33.5"
   }
 }

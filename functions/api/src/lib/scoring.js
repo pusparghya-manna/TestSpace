@@ -48,7 +48,6 @@ export function calculateAttemptScore(exam, answers = {}, timeTakenSeconds = 0) 
     correctCount,
     wrongCount,
     skippedCount,
-    // aliases for older clients
     correct: correctCount,
     wrong: wrongCount,
     unattempted: skippedCount,
@@ -56,18 +55,42 @@ export function calculateAttemptScore(exam, answers = {}, timeTakenSeconds = 0) 
   };
 }
 
-export function secondsLeft(attempt) {
-  const endIso = attempt?.expiresAt || attempt?.endsAt;
-  if (endIso) {
-    const end = new Date(endIso).getTime();
-    if (Number.isFinite(end)) {
-      const pausedExtra = Number(attempt?.pausedSeconds || 0) * 1000;
-      // endsAt already accounts for duration; pausedSeconds is informational
-      return Math.max(0, Math.floor((end - Date.now()) / 1000));
+/** Server-authoritative remaining seconds, accounting for pause. */
+export function secondsLeft(attempt, now = Date.now()) {
+  if (!attempt) return 0;
+  if (attempt.pausedAt) {
+    // frozen while paused
+    const end = new Date(attempt.expiresAt || attempt.endsAt).getTime();
+    const pausedAt = new Date(attempt.pausedAt).getTime();
+    if (Number.isFinite(end) && Number.isFinite(pausedAt)) {
+      return Math.max(0, Math.floor((end - pausedAt) / 1000));
     }
   }
-  const start = attempt?.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
-  const dur = (Number(attempt?.durationMinutes) || 60) * 60 * 1000;
-  const end = start + dur;
-  return Math.max(0, Math.floor((end - Date.now()) / 1000));
+  const endIso = attempt.expiresAt || attempt.endsAt;
+  if (endIso) {
+    const end = new Date(endIso).getTime();
+    if (Number.isFinite(end)) return Math.max(0, Math.floor((end - now) / 1000));
+  }
+  const start = attempt.startedAt ? new Date(attempt.startedAt).getTime() : now;
+  const dur = (Number(attempt.durationMinutes) || 60) * 60 * 1000;
+  return Math.max(0, Math.floor((start + dur - now) / 1000));
+}
+
+export function rankOfficialAttempts(attempts) {
+  const list = (attempts || [])
+    .filter(
+      (a) =>
+        (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED') && a.isOfficial !== false
+    )
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.percentage || 0) - (a.percentage || 0) ||
+        (b.score || 0) - (a.score || 0) ||
+        (a.timeTakenSeconds || 0) - (b.timeTakenSeconds || 0)
+    );
+  list.forEach((a, i) => {
+    a.rank = i + 1;
+  });
+  return list;
 }

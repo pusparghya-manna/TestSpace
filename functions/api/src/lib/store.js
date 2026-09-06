@@ -276,4 +276,22 @@ export const store = {
     await upsertEntity('tg_update', id, { id, claimedAt: new Date().toISOString() });
     return true;
   },
+
+  async saveBroadcastJob(job) {
+    if (!job.id) job.id = ID.unique();
+    await upsertEntity('broadcast', job.id, job);
+    return job;
+  },
+  async getBroadcastJobs(status) {
+    const all = await listEntity('broadcast', 200);
+    return status ? all.filter((j) => j.status === status) : all;
+  },
+  async saveMediaMeta(meta) {
+    if (!meta.id) meta.id = meta.fileId || ID.unique();
+    await upsertEntity('media', meta.id, meta);
+    return meta;
+  },
+  async getMediaMeta(id) {
+    return getEntity('media', id);
+  },
 };

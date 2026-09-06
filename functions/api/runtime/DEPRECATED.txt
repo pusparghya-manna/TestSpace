@@ -1,0 +1,1 @@
+DEPRECATED — use src/ as sole entrypoint

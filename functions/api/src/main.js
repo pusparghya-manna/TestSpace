@@ -4,19 +4,16 @@
 import { ID } from 'node-appwrite';
 import { store } from './lib/store.js';
 import { registerTeacher, loginTeacher, teacherFromHeaders } from './lib/auth.js';
-import { effectiveExamStatus, withEffectiveStatus, calculateAttemptScore, secondsLeft } from './lib/scoring.js';
+import { effectiveExamStatus, withEffectiveStatus, calculateAttemptScore, secondsLeft, rankOfficialAttempts } from './lib/scoring.js';
 import { parseQuestionsFromMedia } from './services/ocr.js';
 import { validateTelegramWebAppData } from './lib/webappAuth.js';
-import { processTelegramUpdate, sendMessage } from './services/telegram.js';
+import { processTelegramUpdate, sendMessage, processBroadcastJobs, escapeHtml } from './services/telegram.js';
+import { assertProductionSecrets, corsHeaders, rateLimit, getJwtSecret } from './lib/security.js';
+import { ownsExam, ownsQuestion, ownsStudent, ownsAttempt, teacherIdOf, notFoundOrForbidden } from './lib/ownership.js';
+import { uploadBase64ToStorage, processOcrCrops, getStorageFileBuffer } from './services/media.js';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Telegram-Init-Data',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-};
-
-function json(res, status, body) {
-  return res.json(body, status, CORS);
+function json(res, status, body, req) {
+  return res.json(body, status, corsHeaders(req || {}));
 }
 
 function parseBody(req) {
@@ -70,9 +67,6 @@ function authWebapp(req, res) {
     '';
   const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
   if (!botToken) {
-    // Dev fallback: accept explicit telegramUserId only when bot token missing (not ideal)
-    const uid = Number(body.telegramUserId || headers['x-telegram-user-id'] || 0);
-    if (uid) return { userId: uid, user: { id: uid, first_name: 'Student' } };
     json(res, 503, { error: 'TELEGRAM_BOT_TOKEN not configured' });
     return null;
   }
@@ -97,11 +91,33 @@ export default async ({ req, res, log, error }) => {
 
   try {
     // Health
+    // Opportunistic lightweight sweep (bounded; Appwrite has no always-on worker)
+    if (path === '/api/cron/sweep' && method === 'POST') {
+      const secret = process.env.CRON_SECRET || process.env.JWT_SECRET || '';
+      const hdr = req.headers?.['x-cron-secret'] || req.headers?.['X-Cron-Secret'] || '';
+      if (!secret || hdr !== secret) return json(res, 401, { error: 'Unauthorized' }, req);
+      let finalized = 0;
+      try {
+        const attempts = await store.getAttempts();
+        for (const a of attempts) {
+          if (a.status === 'IN_PROGRESS' && secondsLeft(a) <= 0) {
+            await finalizeExpiredAttempt(a);
+            finalized++;
+          }
+        }
+      } catch (e) {
+        error(String(e?.message || e));
+      }
+      let broadcasts = 0;
+      try { broadcasts = await processBroadcastJobs(store, 10); } catch (_) {}
+      return json(res, 200, { ok: true, finalized, broadcasts }, req);
+    }
+
     if ((path === '/' || path === '/health') && method === 'GET') {
       return json(res, 200, {
         ok: true,
         service: 'testspace-api',
-        version: '3.2.0',
+        version: '4.0.0',
         features: ['auth', 'exams', 'questions', 'students', 'results', 'ocr', 'webapp', 'telegram'],
         ocrConfigured: !!process.env.GEMINI_API_KEY,
         telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
@@ -139,10 +155,10 @@ export default async ({ req, res, log, error }) => {
       return json(res, 200, { ok: true });
     }
     if (path === '/api/auth/forgot-password' && method === 'POST') {
-      return json(res, 200, { ok: true, message: 'If an account exists, reset instructions were sent.' });
+      return json(res, 501, { error: 'Password recovery is not available. Contact your administrator.' }, req);
     }
     if (path === '/api/auth/firebase/exchange' && method === 'POST') {
-      return json(res, 501, { error: 'Firebase auth not configured on Appwrite deployment' });
+      return json(res, 501, { error: 'Google/Firebase login is disabled. Use username and password.' }, req);
     }
 
     // ---------- DASHBOARD DATA ----------
@@ -209,8 +225,10 @@ export default async ({ req, res, log, error }) => {
     {
       const m = match(path, '/api/exams/:id');
       if (m && method === 'GET') {
+        const t = requireTeacher(req, res);
+        if (!t) return;
         const exam = await store.getExamById(m.id);
-        if (!exam) return json(res, 404, { error: 'Exam not found' });
+        if (!exam || !ownsExam(exam, t)) return json(res, 404, { error: 'Not found' }, req);
         return json(res, 200, withEffectiveStatus(exam));
       }
       if (m && method === 'PUT') {
@@ -358,13 +376,33 @@ export default async ({ req, res, log, error }) => {
     if (path === '/api/ocr/upload-image' && method === 'POST') {
       const t = requireTeacher(req, res);
       if (!t) return;
-      // Store metadata; binary storage can use Appwrite Storage later
-      return json(res, 200, { ok: true, fileId: body.fileId || ID.unique(), message: 'Image registered' });
+      if (!rateLimit(`ocr-up:${t.username}`, 20, 60_000)) return json(res, 429, { error: 'Too many uploads' }, req);
+      let fileBase64 = String(body.fileBase64 || body.image || body.base64 || '');
+      if (fileBase64.includes(',')) fileBase64 = fileBase64.split(',').pop() || '';
+      if (!fileBase64) return json(res, 400, { error: 'fileBase64 required' }, req);
+      const mime = body.mimeType || 'image/jpeg';
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(mime)) return json(res, 400, { error: 'Invalid image MIME type' }, req);
+      try {
+        const uploaded = await uploadBase64ToStorage(fileBase64, mime, body.name || 'page.jpg');
+        await store.saveMediaMeta({ ...uploaded, id: uploaded.fileId, teacherId: t.username, createdAt: new Date().toISOString() });
+        return json(res, 200, { ok: true, fileId: uploaded.fileId, bucketId: uploaded.bucketId, mimeType: mime }, req);
+      } catch (e) {
+        return json(res, 500, { error: e?.message || 'Upload failed' }, req);
+      }
     }
     if (path === '/api/ocr/commit-crops' && method === 'POST') {
       const t = requireTeacher(req, res);
       if (!t) return;
-      return json(res, 200, { ok: true, questions: body.questions || [] });
+      let pageBase64 = String(body.fileBase64 || body.pageBase64 || body.image || '');
+      if (pageBase64.includes(',')) pageBase64 = pageBase64.split(',').pop() || '';
+      const questions = Array.isArray(body.questions) ? body.questions : [];
+      if (!pageBase64 || !questions.length) return json(res, 400, { error: 'page image and questions required' }, req);
+      try {
+        const result = await processOcrCrops(pageBase64, questions);
+        return json(res, 200, { ok: true, questions: result.questions, imageErrors: result.imageErrors }, req);
+      } catch (e) {
+        return json(res, 500, { error: e?.message || 'Crop commit failed' }, req);
+      }
     }
 
     // ---------- STUDENTS ----------
@@ -619,14 +657,37 @@ export default async ({ req, res, log, error }) => {
       const auth = authWebapp(req, res);
       if (!auth) return;
       let exam = await store.getExamById(body.examId);
-      if (!exam) return json(res, 404, { error: 'Exam not found' });
+      if (!exam) return json(res, 404, { error: 'Exam not found' }, req);
       exam = await hydrateExamQuestions(exam);
+      const windowStart = exam.startDate ? new Date(exam.startDate).getTime() : 0;
+      if (Number.isFinite(windowStart) && windowStart > 0 && Date.now() < windowStart && !body.practice) {
+        return json(res, 409, {
+          code: 'EXAM_NOT_STARTED',
+          startTime: exam.startDate,
+          error: 'This exam has not started yet.',
+        }, req);
+      }
       const qs = publicQuestions(exam);
       if (!qs.length) {
-        return json(res, 400, { error: 'This exam has no questions yet. Ask your teacher to publish questions.' });
+        return json(res, 400, { error: 'This exam has no questions yet. Ask your teacher to publish questions.' }, req);
       }
-      const student = await store.getStudentByTelegramId(auth.userId);
-      const existing = (await store.getStudentAttempts(exam.id, auth.userId)).find((a) => a.status === 'IN_PROGRESS');
+      let student = await store.getStudentByTelegramId(auth.userId);
+      if (!student) {
+        student = {
+          id: `STU_${auth.userId}`,
+          studentId: `TG-${auth.userId}`,
+          name: [auth.user?.first_name, auth.user?.last_name].filter(Boolean).join(' ') || auth.user?.username || `Student ${auth.userId}`,
+          telegramUserId: auth.userId,
+          teacherIds: exam.teacherId ? [exam.teacherId] : [],
+          status: 'linked',
+          joinedAt: new Date().toISOString(),
+        };
+        await store.saveStudent(student);
+      }
+      const forceNew = !!body.forceNew;
+      const existing = !forceNew
+        ? (await store.getStudentAttempts(exam.id, auth.userId)).find((a) => a.status === 'IN_PROGRESS')
+        : null;
       if (existing && secondsLeft(existing) > 0) {
         return json(res, 200, {
           attempt: existing,
@@ -652,7 +713,10 @@ export default async ({ req, res, log, error }) => {
         expiresAt: endsAt,
         durationMinutes,
         attemptNumber: await store.nextAttemptNumber(exam.id, auth.userId),
-        practice: !!body.practice,
+        practice: !!body.practice || !!body.forceNew,
+        isOfficial: !body.practice && !body.forceNew,
+        pausedAt: null,
+        pausedSeconds: 0,
       };
       await store.saveAttempt(attempt);
       return json(res, 200, {
@@ -667,10 +731,38 @@ export default async ({ req, res, log, error }) => {
       const auth = authWebapp(req, res);
       if (!auth) return;
       const attempt = (await store.getAttempts()).find((a) => a.id === body.attemptId);
-      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' });
-      attempt.pausedAt = new Date().toISOString();
+      if (!attempt || Number(attempt.telegramUserId) !== auth.userId) return json(res, 404, { error: 'Attempt not found' }, req);
+      if (attempt.status !== 'IN_PROGRESS') return json(res, 400, { error: 'Attempt not in progress' }, req);
+      // Official attempts cannot pause (parity with original backend)
+      if (attempt.isOfficial !== false && attempt.practice !== true) {
+        return json(res, 403, { error: 'Pause is only allowed for practice attempts' }, req);
+      }
+      const shouldPause = body.pause !== false && body.pause !== 'false';
+      if (shouldPause) {
+        if (!attempt.pausedAt) attempt.pausedAt = new Date().toISOString();
+      } else if (attempt.pausedAt) {
+        const pausedAt = new Date(attempt.pausedAt).getTime();
+        if (Number.isFinite(pausedAt)) {
+          attempt.pausedSeconds = Math.max(0, Number(attempt.pausedSeconds || 0) + Math.floor((Date.now() - pausedAt) / 1000));
+          // extend expiry by pause duration
+          const end = new Date(attempt.expiresAt || attempt.endsAt).getTime();
+          if (Number.isFinite(end)) {
+            const newEnd = new Date(end + (Date.now() - pausedAt)).toISOString();
+            attempt.expiresAt = newEnd;
+            attempt.endsAt = newEnd;
+          }
+        }
+        attempt.pausedAt = null;
+      }
       await store.updateAttemptPause(attempt);
-      return json(res, 200, { ok: true, attempt });
+      return json(res, 200, {
+        ok: true,
+        paused: Boolean(attempt.pausedAt),
+        pausedAt: attempt.pausedAt || null,
+        pausedSeconds: attempt.pausedSeconds || 0,
+        secondsLeft: secondsLeft(attempt),
+        attempt,
+      }, req);
     }
 
     if (path === '/api/webapp/sync' && method === 'POST') {
@@ -769,6 +861,18 @@ export default async ({ req, res, log, error }) => {
         isSubmitted: true,
       });
       await store.saveAttempt(attempt);
+      // Update ranks for this exam
+      try {
+        const all = (await store.getAttempts()).filter((a) => a.examId === attempt.examId);
+        const ranked = rankOfficialAttempts(all);
+        for (const r of ranked) {
+          if (r.id === attempt.id || r.rank) await store.saveAttempt(r);
+        }
+        const me = ranked.find((r) => r.id === attempt.id);
+        if (me) attempt.rank = me.rank;
+      } catch (e) {
+        console.warn('[rank]', e?.message || e);
+      }
       return json(res, 200, {
         attempt,
         exam: {
@@ -776,7 +880,7 @@ export default async ({ req, res, log, error }) => {
           title: exam?.title,
           resultVisibility: exam?.resultVisibility || 'PUBLISHED',
         },
-      });
+      }, req);
     }
 
     if (path === '/api/webapp/results' && method === 'POST') {

@@ -1,22 +1,29 @@
-# TestSpace API — Appwrite Function (converted)
+# TestSpace API — Appwrite Function (production)
 
-This is **not** a copy of Express `backend/`. It is an Appwrite Function:
-
-- Entry: `src/main.js` (`export default async ({ req, res, log, error })`)
-- Data: Appwrite TablesDB (`lib/store.js`)
-- Auth: JWT teachers + Telegram Mini App `initData`
-- Telegram: Bot HTTP API (`services/telegram.js`)
-- OCR: Gemini (`services/ocr.js`)
+**Entrypoint:** `src/main.js`  
+**Version:** 4.0.0
 
 ```
 src/
-  main.js                 # Appwrite router
-  lib/store.js            # TablesDB
-  lib/auth.js             # teacher JWT
-  lib/scoring.js
-  lib/webappAuth.js
-  services/ocr.js         # converted from services/geminiOcr.ts
-  services/telegram.js    # converted from telegram/bot.ts commands
+  main.js                 # HTTP router (Appwrite Function entry)
+  lib/
+    store.js              # TablesDB entity store
+    auth.js               # Teacher JWT + bcrypt
+    security.js           # JWT secret, CORS, rate limit
+    ownership.js          # Teacher resource ownership
+    scoring.js            # Score, timer, ranks
+    webappAuth.js         # Telegram initData HMAC + auth_date
+  services/
+    ocr.js                # Gemini OCR parse
+    media.js              # Appwrite Storage upload + crop (sharp)
+    telegram.js           # Bot + broadcast job processor
+  __tests__/
+    parity.unit.test.js
 ```
 
-`backend/` remains the original Express source for reference.
+`runtime/` is deprecated. `backend/` is reference-only (not deployed).
+
+## Cron
+
+`POST /api/cron/sweep` with header `X-Cron-Secret: <CRON_SECRET or JWT_SECRET>`  
+Finalizes expired attempts and processes pending broadcasts.

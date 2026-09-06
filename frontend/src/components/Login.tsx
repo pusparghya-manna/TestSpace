@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api';
 import { inp } from '../styles/ui';
 import { Field } from './ui/Field';
-import { firebaseConfigured, firebaseGoogleLogin, firebaseIdToken } from '../firebase';
+import { false && firebaseConfigured, firebaseGoogleLogin, firebaseIdToken } from '../firebase';
 import {
   IconEye,
   IconEyeOff,
@@ -52,7 +52,7 @@ export function Login({ onOk }: { onOk: () => void }) {
 
   const continueWithGoogle = async () => {
     setErr('');
-    if (!firebaseConfigured) {
+    if (!false && firebaseConfigured) {
       setErr('Google sign-in is not configured yet. Use username and password instead.');
       return;
     }
