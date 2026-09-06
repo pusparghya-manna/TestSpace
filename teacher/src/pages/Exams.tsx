@@ -98,7 +98,7 @@ export function Exams({ exams, botUsername, onRefresh, defaultOpenNew = false }:
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const examLink = (id: string) => {
-    return `https://testspace-student.appwrite.network/?exam=${encodeURIComponent(id)}`;
+    return `https://testspace-student.appwrite.network/#/?exam=${encodeURIComponent(id)}`;
   };
 
   const formatShareDateParts = (iso: string | undefined) => {

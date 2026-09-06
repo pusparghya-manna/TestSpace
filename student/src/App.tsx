@@ -223,56 +223,75 @@ export default function App() {
     }
   }, [location.pathname, availableExams]);
 
-  // Browser notifications from teacher broadcasts
+  // Teacher messages → in-app banner + browser notification
   useEffect(() => {
     if (!inTelegram) return;
     let cancelled = false;
     let known = new Set<string>();
     try {
-      const raw = sessionStorage.getItem('ts_known_notifs');
+      const raw = localStorage.getItem('ts_known_notifs');
       if (raw) known = new Set(JSON.parse(raw));
     } catch {}
 
     const requestPerm = async () => {
       try {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          await Notification.requestPermission();
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+          }
         }
-      } catch {}
+      } catch {
+        /* ignored */
+      }
     };
 
     const poll = async () => {
       try {
         const { notifications } = await webappApi.notifications();
         if (cancelled) return;
-        const unread = (notifications || []).filter((n) => !n.read && !known.has(n.id));
+        const list = notifications || [];
+        const unread = list.filter((n) => !known.has(n.id));
+        if (!unread.length) return;
         for (const n of unread) {
           known.add(n.id);
+          setTeacherMessage(n.message);
           try {
-            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-              new Notification('TestSpace', { body: n.message, icon: '/logo.svg' });
+            if ('Notification' in window && Notification.permission === 'granted') {
+              const note = new Notification('TestSpace', {
+                body: n.message,
+                icon: `${window.location.origin}/logo.svg`,
+                tag: n.id,
+              });
+              note.onclick = () => {
+                window.focus();
+                note.close();
+              };
             }
-          } catch {}
+          } catch {
+            /* browser blocked */
+          }
         }
         try {
-          sessionStorage.setItem('ts_known_notifs', JSON.stringify([...known].slice(-200)));
+          localStorage.setItem('ts_known_notifs', JSON.stringify([...known].slice(-300)));
         } catch {}
-        const ids = (notifications || []).filter((n) => !n.read).map((n) => n.id);
-        if (ids.length) await webappApi.markNotificationsRead(ids).catch(() => {});
+        await webappApi.markNotificationsRead(unread.map((n) => n.id)).catch(() => {});
       } catch {
-        /* offline */
+        /* offline / unauthorized */
       }
     };
 
-    void requestPerm();
-    void poll();
-    const timer = window.setInterval(poll, 25000);
+    void requestPerm().then(poll);
+    const timer = window.setInterval(poll, 12000);
+    const onFocus = () => { void poll(); };
+    window.addEventListener('focus', onFocus);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
     };
   }, [inTelegram]);
 
+  const [teacherMessage, setTeacherMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notStartedAt, setNotStartedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -398,7 +417,9 @@ export default function App() {
           /* none yet */
         }
 
-        const params = new URLSearchParams(window.location.search);
+        const hash = window.location.hash || '';
+        const hashQuery = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
+        const params = new URLSearchParams(window.location.search || hashQuery);
         const reviewAttemptId = params.get('a');
         const linkedExamId = params.get('exam');
 
@@ -688,6 +709,23 @@ export default function App() {
             </div>
           </div>
         )}
+        
+        {teacherMessage && (
+          <div className="mb-4 glass-card rounded-2xl p-3 border border-blue-200/70 flex gap-3 items-start">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Message from teacher</p>
+              <p className="text-sm text-slate-800 mt-0.5 whitespace-pre-wrap">{teacherMessage}</p>
+            </div>
+            <button
+              type="button"
+              className="text-xs font-bold text-slate-500 shrink-0"
+              onClick={() => setTeacherMessage(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {actionError && (
           <div className="mb-4 glass-card rounded-2xl p-3 border border-rose-200/60 text-xs text-rose-700 font-semibold">
             {actionError}

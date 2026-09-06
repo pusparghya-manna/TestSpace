@@ -290,22 +290,22 @@ export async function handleTeacherRoutes(method, path, body, req, res) {
     if (!t) return json(res, 401, { error: 'UNAUTHORIZED' }, req);
     const message = String(body.message || body.text || '').trim();
     if (!message) return json(res, 400, { error: 'Message required' }, req);
-    const students = await store.getStudents();
-    // Prefer students linked via opened exams of this teacher, else all students
-    const exams = (await store.getExams()).filter((e) => e.teacherId === t.id || e.teacherUsername === t.username || !e.teacherId);
-    const examIds = new Set(exams.map((e) => e.id));
-    let targets = students.filter((s) => {
-      const opened = Array.isArray(s.openedExamIds) ? s.openedExamIds : [];
-      return opened.some((id) => examIds.has(id));
-    });
-    if (!targets.length) targets = students;
-    const created = await store.createStudentNotifications({
-      message,
-      teacherId: t.id || t.username,
-      studentIds: targets.map((s) => s.id),
-    });
-    await store.addAuditLog('broadcast', message.slice(0, 200), t.username || t.id);
-    return json(res, 200, { sent: created.length, failed: 0 }, req);
+    try {
+      const students = await store.getStudents();
+      const targets = students.filter((s) => s && s.id);
+      if (!targets.length) {
+        return json(res, 200, { sent: 0, failed: 0, warning: 'No registered students yet' }, req);
+      }
+      const created = await store.createStudentNotifications({
+        message,
+        teacherId: t.id || t.username,
+        studentIds: targets.map((s) => s.id),
+      });
+      await store.addAuditLog('broadcast', message.slice(0, 200), t.username || t.id);
+      return json(res, 200, { sent: created.length, failed: 0 }, req);
+    } catch (e) {
+      return json(res, 500, { error: e?.message || 'Failed to store notifications' }, req);
+    }
   }
 
   return null;
