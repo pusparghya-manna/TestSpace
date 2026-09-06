@@ -42,7 +42,7 @@ export function StudentAuthGate({ onAuthed }: { onAuthed: () => void }) {
         <img
           src={`${import.meta.env.BASE_URL}logo.svg`}
           alt="TestSpace"
-          className="w-16 h-16 rounded-2xl object-contain bg-white mx-auto"
+          className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-contain bg-white mx-auto"
           width={64}
           height={64}
         />

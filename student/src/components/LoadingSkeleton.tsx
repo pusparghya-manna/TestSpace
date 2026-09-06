@@ -7,7 +7,7 @@ const Logo: React.FC = () => (
     draggable={false}
     onContextMenu={(e) => e.preventDefault()}
     onDragStart={(e) => e.preventDefault()}
-    className="protected-logo h-14 w-14 rounded-2xl object-cover bg-white shadow-md shadow-blue-500/15"
+    className="protected-logo h-16 w-16 md:h-20 md:w-20 rounded-2xl object-contain bg-white shadow-md shadow-blue-500/15"
     width="56"
     height="56"
     loading="eager"

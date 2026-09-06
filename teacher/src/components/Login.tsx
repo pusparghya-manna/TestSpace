@@ -88,7 +88,7 @@ export function Login({ onOk }: { onOk: () => void }) {
           <img
             src="/logo.svg"
             alt="TestSpace"
-            className="mx-auto h-28 w-28 rounded-full object-contain drop-shadow-[0_8px_18px_rgba(37,99,235,0.18)] sm:h-36 sm:w-36"
+            className="mx-auto h-36 w-36 rounded-full object-contain drop-shadow-[0_8px_18px_rgba(37,99,235,0.18)] sm:h-44 sm:w-44"
           />
         </header>
 

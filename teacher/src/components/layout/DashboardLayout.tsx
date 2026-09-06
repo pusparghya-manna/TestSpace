@@ -105,7 +105,7 @@ export function DashboardLayout() {
             <img
               src="/logo.svg"
               alt="TestSpace"
-              className="w-8 h-8 rounded-lg object-contain shrink-0"
+              className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-contain shrink-0"
             />
             <div className="min-w-0">
               <div className="font-bold text-[13px] text-slate-900 leading-tight">

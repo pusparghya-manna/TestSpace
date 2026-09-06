@@ -48,46 +48,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   );
   const featured = liveExams[0] || availableExams[0];
 
-  const initials =
-    (profile.name || 'ST')
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
 
   return (
     <div className="space-y-4 pb-10">
-      <div className="glass-card rounded-2xl p-4 shadow-xs relative overflow-hidden">
-        <div className="flex items-center gap-3">
-          {profile.photoUrl ? (
-            <img
-              src={profile.photoUrl}
-              alt="Student profile photo"
-              className="w-11 h-11 rounded-xl object-cover shadow-md shadow-blue-500/20"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <div className="w-11 h-11 rounded-xl glass-btn-primary text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v1.2c0 .7.5 1.2 1.2 1.2h16.8c.7 0 1.2-.5 1.2-1.2v-1.2c0-3.2-6.4-4.8-9.6-4.8z" />
-              </svg>
-            </div>
-          )}
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
-              Welcome back
-            </span>
-            <h1 className="text-lg md:text-xl font-bold text-slate-900 leading-tight truncate">
-              {profile.name || 'Student'}
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium truncate">
-              {profile.telegramAccount || 'Registered student'}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {hasOngoing && (
         <section>
           <div className="flex items-center justify-between mb-2">

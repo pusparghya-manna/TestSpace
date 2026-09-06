@@ -1,6 +1,8 @@
 import { StudentAuthGate } from './components/StudentAuthGate';
 import React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { pathForTab, tabFromPath } from './routes';
 import { AlertCircle } from 'lucide-react';
 import { Exam, ExamAttempt, UserProfile, Question, OngoingSummary } from './types';
 import { DesktopNavigation, MobileNavigation } from './components/Navigation';
@@ -178,6 +180,9 @@ function writeWebappCache(data: {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [isLoading, setIsLoading] = useState(() => {
     try { return Boolean(localStorage.getItem('ts_student_token') || sessionStorage.getItem('ts_student_token')); }
     catch { return false; }
@@ -195,7 +200,25 @@ export default function App() {
   const [pastResults, setPastResults] = useState<ExamAttempt[]>([]);
   const [selectedResultAttempt, setSelectedResultAttempt] = useState<ExamAttempt | null>(null);
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([]);
-  const [currentTab, setCurrentTab] = useState('home');
+  const [currentTab, setCurrentTab] = useState(() => tabFromPath(window.location.pathname).tab);
+
+  const goTab = useCallback((tab: string, extra?: { examId?: string; attemptId?: string }) => {
+    setCurrentTab(tab);
+    const next = pathForTab(tab, extra);
+    if (window.location.pathname !== next) navigate(next);
+  }, [navigate]);
+
+  useEffect(() => {
+    const parsed = tabFromPath(location.pathname);
+    setCurrentTab((prev) => (prev === parsed.tab ? prev : parsed.tab));
+    if (parsed.examId) {
+      setSelectedExam((prev) => {
+        if (prev?.id === parsed.examId) return prev;
+        return availableExams.find((e) => e.id === parsed.examId) || prev;
+      });
+    }
+  }, [location.pathname, availableExams]);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [notStartedAt, setNotStartedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -214,7 +237,7 @@ export default function App() {
       setOngoingSummary(null);
       setBusy(false);
       setActionLoading(null);
-      setCurrentTab('results');
+      goTab('results');
     },
     [selectedExam?.title]
   );
@@ -340,7 +363,7 @@ export default function App() {
               prev.some((e) => e.id === linkedExam!.id) ? prev : [linkedExam!, ...prev]
             );
             setSelectedExam(linkedExam);
-            setCurrentTab('details');
+            goTab('details', { examId: linkedExam.id });
           }
         }
         if (reviewAttemptId) {
@@ -361,7 +384,7 @@ export default function App() {
                 totalMarks: data.attempt.maxScore || 0,
                 status: 'RESULTS_PUBLISHED',
               });
-              setCurrentTab('answers');
+              goTab('answers');
             }
           } catch {
             /* ignore deep link errors */
@@ -404,7 +427,7 @@ export default function App() {
         setSelectedResultAttempt(completed);
         setOngoingAttempt(null);
         setOngoingSummary(null);
-        setCurrentTab('results');
+        goTab('results');
         void refreshResults().catch(() => {});
         return;
       }
@@ -423,7 +446,7 @@ export default function App() {
       });
       setOngoingAttempt(mapped);
       setOngoingSummary(null);
-      setCurrentTab('live');
+      goTab('live');
     } catch (err: any) {
       if (err?.code === 'EXAM_NOT_STARTED') {
         setNotStartedAt(err.startTime || exam.startDate || null);
@@ -479,14 +502,14 @@ export default function App() {
       setPastResults((prev) => [completed, ...prev.filter((p) => p.id !== completed.id)]);
       setSelectedResultAttempt(completed);
       setOngoingAttempt(null);
-      setCurrentTab('results');
+      goTab('results');
       // Refresh list in background — do not block result screen
       void refreshResults().catch(() => {});
     } catch (err: any) {
       // Restore attempt so student can retry submit
       setOngoingAttempt(snapshot);
       setActionError(err?.message || 'Failed to submit exam');
-      setCurrentTab('review');
+      goTab('review');
     } finally {
       setBusy(false);
       setActionLoading(null);
@@ -513,7 +536,7 @@ export default function App() {
         status: 'RESULTS_PUBLISHED',
         questions: mapQuestions(data.questions),
       });
-      setCurrentTab('answers');
+      goTab('answers');
     } catch (err: any) {
       setActionError(err?.message || 'Could not load solutions (results may be unpublished)');
     } finally {
@@ -566,7 +589,7 @@ export default function App() {
         <header className="sticky top-0 z-30 glass-header px-4 py-3">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <div
-              onClick={() => setCurrentTab('home')}
+              onClick={() => goTab('home')}
               className="flex items-center gap-3 cursor-pointer select-none group"
             >
               <img
@@ -575,7 +598,7 @@ export default function App() {
                 draggable={false}
                 onContextMenu={(e) => e.preventDefault()}
                 onDragStart={(e) => e.preventDefault()}
-                className="protected-logo w-10 h-10 rounded-xl object-cover bg-white shadow-md shadow-blue-500/20"
+                className="protected-logo w-16 h-16 md:w-20 md:h-20 rounded-2xl object-contain bg-white shadow-md shadow-blue-500/20"
                 width="40"
                 height="40"
                 loading="eager"
@@ -591,7 +614,7 @@ export default function App() {
               currentTab={currentTab}
               onSelectTab={(tab) => {
                 if (tab === 'results') setSelectedResultAttempt(null);
-                setCurrentTab(tab);
+                goTab(tab);
               }}
               hasOngoing={
                 !!(ongoingAttempt && !ongoingAttempt.isSubmitted) || !!ongoingSummary
@@ -622,10 +645,10 @@ export default function App() {
             ongoingAttempt={ongoingAttempt}
             ongoingSummary={ongoingSummary}
             availableExams={availableExams}
-            onNavigate={setCurrentTab}
+            onNavigate={goTab}
             onSelectExam={(exam) => {
               setSelectedExam(exam);
-              setCurrentTab('details');
+              goTab('details', { examId: exam.id });
             }}
                         onResumeOngoing={handleResumeOngoing}
             isBusy={busy}
@@ -639,7 +662,7 @@ export default function App() {
             ongoingSummary={ongoingSummary}
             onSelectExam={(exam) => {
               setSelectedExam(exam);
-              setCurrentTab('details');
+              goTab('details', { examId: exam.id });
             }}
             onStartExamDirect={(exam) => handleStartExam(exam, true)}
             onResumeOngoing={handleResumeOngoing}
@@ -650,7 +673,7 @@ export default function App() {
         {currentTab === 'details' && selectedExam && (
           <ExamDetailsScreen
             exam={selectedExam}
-            onBack={() => setCurrentTab('exams')}
+            onBack={() => goTab('exams')}
             onConfirmStart={(exam) => handleStartExam(exam, false)}
           />
         )}
@@ -668,8 +691,8 @@ export default function App() {
             soundEnabled={profile.soundEnabled}
             isPractice={ongoingAttempt.isOfficial === false}
             onUpdateAttempt={setOngoingAttempt}
-            onOpenReview={() => setCurrentTab('review')}
-            onLeaveExam={() => setCurrentTab('exams')}
+            onOpenReview={() => goTab('review')}
+            onLeaveExam={() => goTab('exams')}
             onTimeUp={() => void handleFinalSubmit()}
             onAnswerChange={attemptSync.recordAnswer}
             onIndexChange={attemptSync.recordIndex}
@@ -688,12 +711,12 @@ export default function App() {
               } as Exam)
             }
             attempt={ongoingAttempt}
-            onReturnToLive={() => setCurrentTab('live')}
+            onReturnToLive={() => goTab('live')}
             onJumpToQuestion={(idx) => {
               setOngoingAttempt((a) =>
                 a ? { ...a, currentQuestionIndex: idx } : a
               );
-              setCurrentTab('live');
+              goTab('live');
             }}
             onFinalSubmit={handleFinalSubmit}
           />
@@ -707,7 +730,7 @@ export default function App() {
             onSelectAttempt={setSelectedResultAttempt}
             onReviewAnswers={handleReviewAnswers}
             onReattempt={(exam) => handleStartExam(exam, true)}
-            onGoExams={() => setCurrentTab('exams')}
+            onGoExams={() => goTab('exams')}
           />
         )}
 
@@ -715,7 +738,7 @@ export default function App() {
           <AnswersScreen
             examTitle={selectedResultAttempt?.examTitle || selectedExam?.title || 'Exam'}
             questions={reviewQuestions}
-            onBackToResults={() => setCurrentTab('results')}
+            onBackToResults={() => goTab('results')}
           />
         )}
 
@@ -726,7 +749,7 @@ export default function App() {
             currentUserName={profile.name || 'You'}
             onSelectExamResult={(attempt) => {
               setSelectedResultAttempt(attempt);
-              setCurrentTab('results');
+              goTab('results');
             }}
           />
         )}
@@ -767,7 +790,7 @@ export default function App() {
           currentTab={currentTab}
           onSelectTab={(tab) => {
             if (tab === 'results') setSelectedResultAttempt(null);
-            setCurrentTab(tab);
+            goTab(tab);
           }}
           hasOngoing={
             !!(ongoingAttempt && !ongoingAttempt.isSubmitted) || !!ongoingSummary
