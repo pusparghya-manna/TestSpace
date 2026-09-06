@@ -176,20 +176,27 @@ export async function processTelegramUpdate(update, store) {
 }
 
 export async function processBroadcastJobs(store, limit = 5) {
-  const jobs = (await store.getBroadcastJobs('pending')).slice(0, limit);
+  const pending = await store.getBroadcastJobs('pending');
+  const failed = await store.getBroadcastJobs('failed');
+  const jobs = [...pending, ...failed].slice(0, limit);
   for (const job of jobs) {
+    if (job.status === 'sent') continue;
     job.status = 'processing';
     await store.saveBroadcastJob(job);
-    let sent = 0;
-    let failed = 0;
+    job.delivered = Array.isArray(job.delivered) ? job.delivered : [];
+    let sent = Number(job.sent || 0);
+    let failedN = 0;
     for (const rid of job.recipients || []) {
+      if (job.delivered.includes(String(rid))) { sent++; continue; }
       const r = await sendMessage(rid, job.message);
-      if (r?.ok) sent++;
-      else failed++;
+      if (r?.ok) {
+        sent++;
+        job.delivered.push(String(rid));
+      } else failedN++;
     }
-    job.status = failed && !sent ? 'failed' : 'sent';
     job.sent = sent;
-    job.failed = failed;
+    job.failed = failedN;
+    job.status = failedN ? 'failed' : 'sent';
     job.finishedAt = new Date().toISOString();
     await store.saveBroadcastJob(job);
   }

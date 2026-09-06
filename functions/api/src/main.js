@@ -23,12 +23,17 @@ function parseBody(req) {
 }
 
 function requireTeacher(req, res) {
-  const t = teacherFromHeaders(req.headers || {});
-  if (!t) {
-    json(res, 401, { error: 'Unauthorized' });
+  try {
+    const t = teacherFromHeaders(req.headers || {});
+    if (!t) {
+      json(res, 401, { error: 'Unauthorized' }, req);
+      return null;
+    }
+    return t;
+  } catch (e) {
+    json(res, 401, { error: 'Unauthorized' }, req);
     return null;
   }
-  return t;
 }
 
 function match(path, pattern) {
@@ -67,12 +72,12 @@ function authWebapp(req, res) {
     '';
   const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
   if (!botToken) {
-    json(res, 503, { error: 'TELEGRAM_BOT_TOKEN not configured' });
+    json(res, 503, { error: 'TELEGRAM_BOT_TOKEN not configured' }, req);
     return null;
   }
   const auth = validateTelegramWebAppData(String(initData), botToken);
   if (!auth) {
-    json(res, 401, { error: 'Invalid Telegram WebApp auth' });
+    json(res, 401, { error: 'Invalid Telegram WebApp auth' }, req);
     return null;
   }
   return auth;
@@ -93,9 +98,9 @@ export default async ({ req, res, log, error }) => {
     // Health
     // Opportunistic lightweight sweep (bounded; Appwrite has no always-on worker)
     if (path === '/api/cron/sweep' && method === 'POST') {
-      const secret = process.env.CRON_SECRET || process.env.JWT_SECRET || '';
-      const hdr = req.headers?.['x-cron-secret'] || req.headers?.['X-Cron-Secret'] || '';
-      if (!secret || hdr !== secret) return json(res, 401, { error: 'Unauthorized' }, req);
+      const secret = String(process.env.CRON_SECRET || '').trim();
+      const hdr = String(req.headers?.['x-cron-secret'] || req.headers?.['X-Cron-Secret'] || '').trim();
+      if (!secret || !hdr || hdr !== secret) return json(res, 401, { error: 'Unauthorized' }, req);
       let finalized = 0;
       try {
         const attempts = await store.getAttempts();
@@ -148,7 +153,7 @@ export default async ({ req, res, log, error }) => {
     }
     if (path === '/api/auth/me' && method === 'GET') {
       const t = teacherFromHeaders(req.headers || {});
-      if (!t) return json(res, 401, { error: 'Unauthorized' });
+      if (!t) return json(res, 401, { error: 'Unauthorized' }, req);
       return json(res, 200, { teacher: t });
     }
     if (path === '/api/auth/logout' && method === 'POST') {
@@ -171,11 +176,11 @@ export default async ({ req, res, log, error }) => {
         store.getAttempts(),
         store.getSettings(),
       ]);
-      const myExams = exams.filter((e) => !e.teacherId || e.teacherId === t.username).map(withEffectiveStatus);
+      const myExams = exams.filter((e) => e.teacherId === t.username).map(withEffectiveStatus);
       const myExamIds = new Set(myExams.map((e) => e.id));
       const myAttempts = attempts.filter((a) => myExamIds.has(a.examId));
       const myStudents = students.filter(
-        (s) => !s.teacherIds?.length || s.teacherIds.includes(t.username)
+        (s) => Array.isArray(s.teacherIds) && s.teacherIds.includes(t.username)
       );
       return json(res, 200, {
         exams: myExams,
@@ -189,7 +194,7 @@ export default async ({ req, res, log, error }) => {
     if (path === '/api/dashboard/summary' && method === 'GET') {
       const t = requireTeacher(req, res);
       if (!t) return;
-      const exams = (await store.getExams()).filter((e) => !e.teacherId || e.teacherId === t.username);
+      const exams = (await store.getExams()).filter((e) => e.teacherId === t.username);
       const attempts = await store.getAttempts();
       const myIds = new Set(exams.map((e) => e.id));
       const myAttempts = attempts.filter((a) => myIds.has(a.examId));
@@ -218,7 +223,7 @@ export default async ({ req, res, log, error }) => {
     if (path === '/api/exams' && method === 'GET') {
       const t = teacherFromHeaders(req.headers || {});
       let exams = await store.getExams();
-      if (t) exams = exams.filter((e) => !e.teacherId || e.teacherId === t.username);
+      if (t) exams = exams.filter((e) => e.teacherId === t.username);
       return json(res, 200, { exams: exams.map(withEffectiveStatus) });
     }
 
@@ -407,8 +412,12 @@ export default async ({ req, res, log, error }) => {
 
     // ---------- STUDENTS ----------
     if (path === '/api/students' && method === 'GET') {
-      const students = await store.getStudents();
-      return json(res, 200, { students });
+      const t = requireTeacher(req, res);
+      if (!t) return;
+      const students = (await store.getStudents()).filter(
+        (s) => Array.isArray(s.teacherIds) && s.teacherIds.includes(t.username)
+      );
+      return json(res, 200, { students }, req);
     }
     if (path === '/api/students' && method === 'POST') {
       const t = requireTeacher(req, res);
@@ -425,10 +434,10 @@ export default async ({ req, res, log, error }) => {
         const t = requireTeacher(req, res);
         if (!t) return;
         const existing = await store.getStudentById(m.id);
-        if (!existing) return json(res, 404, { error: 'Not found' });
-        const student = { ...existing, ...body, id: m.id };
+        if (!existing || !ownsStudent(existing, t)) return json(res, 404, { error: 'Not found' }, req);
+        const student = { ...existing, ...body, id: m.id, teacherIds: existing.teacherIds };
         await store.saveStudent(student);
-        return json(res, 200, { student });
+        return json(res, 200, { student }, req);
       }
       if (m && method === 'DELETE') {
         const t = requireTeacher(req, res);
@@ -444,7 +453,9 @@ export default async ({ req, res, log, error }) => {
         if (!t) return;
         const examId = body.examId;
         const student = await store.getStudentById(m.id);
-        if (!student) return json(res, 404, { error: 'Student not found' });
+        if (!student || !ownsStudent(student, t)) return json(res, 404, { error: 'Not found' }, req);
+        const exam = examId ? await store.getExamById(examId) : null;
+        if (exam && !ownsExam(exam, t)) return json(res, 404, { error: 'Not found' }, req);
         const attempts = await store.getStudentAttempts(examId, student.telegramUserId);
         for (const a of attempts) await store.deleteAttempt(a.id);
         return json(res, 200, { ok: true, deleted: attempts.length });
@@ -457,8 +468,12 @@ export default async ({ req, res, log, error }) => {
       if (m && method === 'DELETE') {
         const t = requireTeacher(req, res);
         if (!t) return;
+        const attempts = await store.getAttempts();
+        const attempt = attempts.find((a) => a.id === m.id);
+        const exam = attempt ? await store.getExamById(attempt.examId) : null;
+        if (!attempt || !exam || !ownsExam(exam, t)) return json(res, 404, { error: 'Not found' }, req);
         await store.deleteAttempt(m.id);
-        return json(res, 200, { success: true });
+        return json(res, 200, { success: true }, req);
       }
     }
     {
@@ -468,9 +483,9 @@ export default async ({ req, res, log, error }) => {
         if (!t) return;
         const attempts = await store.getAttempts();
         const attempt = attempts.find((a) => a.id === m.id);
-        if (!attempt) return json(res, 404, { error: 'Not found' });
-        const exam = await store.getExamById(attempt.examId);
-        return json(res, 200, { attempt, exam });
+        const exam = attempt ? await store.getExamById(attempt.examId) : null;
+        if (!attempt || !exam || !ownsExam(exam, t)) return json(res, 404, { error: 'Not found' }, req);
+        return json(res, 200, { attempt, exam }, req);
       }
     }
 
@@ -479,7 +494,7 @@ export default async ({ req, res, log, error }) => {
       let attempts = await store.getAttempts();
       let exams = await store.getExams();
       if (t) {
-        exams = exams.filter((e) => !e.teacherId || e.teacherId === t.username);
+        exams = exams.filter((e) => e.teacherId === t.username);
         const ids = new Set(exams.map((e) => e.id));
         attempts = attempts.filter((a) => ids.has(a.examId));
       }
@@ -488,25 +503,36 @@ export default async ({ req, res, log, error }) => {
     }
 
     if (path === '/api/results/export' && method === 'GET') {
-      // query from path - Appwrite may put query on req.query
-      const attempts = await store.getAttempts();
+      const t = requireTeacher(req, res);
+      if (!t) return;
+      const myExams = (await store.getExams()).filter((e) => e.teacherId === t.username);
+      const ids = new Set(myExams.map((e) => e.id));
+      const attempts = (await store.getAttempts()).filter((a) => ids.has(a.examId));
       const rows = [['attemptId', 'examId', 'student', 'score', 'maxScore', 'percentage', 'status']];
       for (const a of attempts) {
         rows.push([a.id, a.examId, a.studentName || a.telegramUserId, a.score, a.maxScore, a.percentage, a.status]);
       }
-      const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-      return res.send(csv, 200, { ...CORS, 'Content-Type': 'text/csv' });
+      const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('
+');
+      return res.send(csv, 200, { ...corsHeaders(req), 'Content-Type': 'text/csv' });
     }
 
     if (path === '/api/leaderboard' && method === 'GET') {
-      const attempts = (await store.getAttempts()).filter((a) => a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED');
+      const t = requireTeacher(req, res);
+      if (!t) return;
+      const myExams = (await store.getExams()).filter((e) => e.teacherId === t.username);
+      const ids = new Set(myExams.map((e) => e.id));
+      const attempts = (await store.getAttempts()).filter((a) => ids.has(a.examId) && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED') && a.isOfficial !== false);
       attempts.sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
-      return json(res, 200, { leaderboard: attempts.slice(0, 100) });
+      return json(res, 200, { leaderboard: attempts.slice(0, 100) }, req);
     }
+
 
     // ---------- SETTINGS / MESSAGING ----------
     if (path === '/api/settings' && method === 'GET') {
-      return json(res, 200, await store.getSettings());
+      const t = requireTeacher(req, res);
+      if (!t) return;
+      return json(res, 200, await store.getSettings(), req);
     }
     if ((path === '/api/settings' && (method === 'PUT' || method === 'POST'))) {
       const t = requireTeacher(req, res);
