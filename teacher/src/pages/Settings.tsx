@@ -7,7 +7,7 @@ import { IconChart, IconInfo, IconSettings } from '../icons';
 import { formatIST } from '../lib/time';
 import { toastError, toastSuccess } from '../lib/notify';
 
-export default function Settings() {
+export function Settings() {
   const [form, setForm] = useState<any>({ systemNotice: '', allowPractice: true, maintenanceMode: false });
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
@@ -110,3 +110,4 @@ export default function Settings() {
     </div>
   );
 }
+export default Settings;
